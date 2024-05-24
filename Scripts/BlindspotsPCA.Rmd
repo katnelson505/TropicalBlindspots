@@ -1,0 +1,614 @@
+---
+title: "BlindspotsPCA"
+output: html_document
+date: "2024-03-27"
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#setwd('/Users/katienelson/Documents/McGill_PhD/Tropical_BioGeo_Bias/PCA')
+```
+
+```{r}
+library(lattice)
+library(gstat)
+library(sp)
+library(ggplot2)
+library(dplyr)
+#library(caret)
+#library(AppliedPredictiveModeling)
+library(scales)
+library(plotly)
+#library(rgdal)
+library(raster)
+#library(rgeos)
+library(dismo)
+library(sf)
+library(tidyverse)
+library(hrbrthemes)
+library(terra)
+```
+
+##Locations 
+```{r}
+data_loc <- here("Data")
+pca_loc <- here("Data", "PCA")
+outputs_loc <- here("Outputs")
+```
+
+##NOT ALL PATHWAYS FIXED BUT MOST
+
+```{r}
+data <- read.csv(here(pca_loc,'RandPoints_Ext.csv'), header= TRUE)
+data$Slope <- as.numeric(data$Slope)
+data <- data %>% dplyr::select(-c(NEE, IGBP, GPP, Elevation, Roughness, SoilpH, PPT))
+
+#data <- sapply( data, as.numeric, rm.na = TRUE)
+
+```
+
+```{r}
+for (col in 1:ncol(data)) {
+    hist(data[,col], main=colnames(data)[col],  xlab=colnames(data)[col])
+}
+```
+
+```{r}
+
+
+#data$PPT <- (data$PPT) +0.001
+
+#data$PPT <- log(data$PPT)
+
+data$MAT <- (data$MAT) +0.001
+
+data$MAT <- log(data$MAT)
+
+#data$GPP <- (data$GPP) +0.001
+
+#data$GPP <- log(data$GPP)
+
+data$NPP <- (data$NPP) +0.001
+
+data$NPP <- log(data$NPP)
+
+data$Ndep2050 <- (data$Ndep2050) +0.001
+
+data$Ndep2050 <- log(data$Ndep2050)
+
+data$Slope <- (data$Slope) +0.001
+
+data$Slope <- log(data$Slope)
+
+#data$Elevation <- (data$Elevation) +0.001
+
+#data$Elevation <- log(data$Elevation)
+
+#data$Roughness <- (data$Roughness) +0.001
+
+#data$Roughness <- log(data$Roughness)
+
+data$SoilOC <- (data$SoilOC) +0.001
+
+data$SoilOC <- log(data$SoilOC)
+
+data$SoilN <- (data$SoilN) +0.001
+
+data$SoilN <- log(data$SoilN)
+
+data$SoilP <- (data$SoilP) +0.001
+
+data$SoilP <- log(data$SoilP)
+
+#data$SoilpH <- (data$SoilpH) +0.001
+
+#data$SoilpH <- log(data$SoilpH)
+
+data$DtB1 <- (data$DtB1) +0.1
+
+data$DtB1 <- log(data$DtB1)
+```
+
+```{r}
+for (col in 1:ncol(data)) {
+    hist(data[,col], main=colnames(data)[col],  xlab=colnames(data)[col])
+}
+```
+
+
+
+
+
+```{r}
+library(corrplot)
+library(factoextra) 
+library(FactoMineR)
+library(vegan)
+```
+
+
+
+
+
+## Soil PCA 
+
+Based on QCBS vegan notes (https://r.qcbs.ca/workshop09/book-en/learning-objectives.html)
+FactoMineR documentation
+
+```{r}
+# Frist, normalize and then standardize your data (data previously normalized and labels removed)
+
+#soil_var.2 <- decostand(soil_var.2, "standardize")
+
+raster_data <- decostand(data, "standardize")
+```
+
+```{r}
+# Perform PCA with FactoMineR 
+# visualize with factoextra
+
+raster.pca <- FactoMineR::PCA(raster_data)
+ 
+summary(raster.pca)  
+
+  ## unknown scaling for the below plot
+```
+
+```{r}
+library(ggrepel)
+# Control variable colors using their contribution
+# Possible values for the argument col.var are :
+  # "cos2", "contrib", "coord", "x", "y"
+fviz_pca_var(raster.pca, col.var="contrib") +
+scale_color_gradient2(low="blue", mid="yellow", 
+                      high="orange", midpoint=5)+theme_bw()
+```
+
+
+
+
+
+```{r}
+raster.pca.plot <- factoextra::fviz_pca_biplot(raster.pca, # PCA object
+                axes = c(1, 2), # graph first two PCs
+                geom.ind = "point", # display trees as points
+                geom.var = c("arrow", "text"), # add arrows and text to variables
+                pointsize = 2, # increase size of tree points
+                labelsize = 6, # increase graph label font size
+                alpha = 0.5, # fade points/ellipses to read better
+                arrowsize = 1,
+                #habillage = as.factor(soil_samp$site), 
+                # habillage = as.factor(soil_clusters),
+                addEllipses = FALSE, # draw ellipses around groups (sites)
+                ellipse.level = 0.95,
+                #palette = pal3, # match palette with other plots
+                col.ind ="grey",
+                col.var = "blue", # make arrows/text of var black
+                ggrepel = TRUE, # avoid label overlap
+                mean.point = FALSE) + # remove site average point
+        theme(panel.grid = element_blank(),
+        legend.title = element_blank()) +
+  geom_text(aes(x= -5, y = 4), label = "", size = 4) +
+  theme(text = element_text(size = 17),
+        axis.title = element_text(size = 17),
+        axis.text = element_text(size = 17),
+        title = element_blank()) 
+
+raster.pca.plot
+
+# export plot to output folder
+
+#png("All_PCA_2024-4-09.png", height = 8, width = 12, unit = "in", res = 800)
+#print(raster.pca.plot)
+#dev.off()
+```
+
+```{r}
+# obtain correlation coefficients between variables and
+# PCs, and run a significance test on correlations
+
+FactoMineR::dimdesc(raster.pca, axes = c(1, 2))
+    ## all variables are significantly correlated with PCS
+```
+
+```{r}
+## examine variables loadings for PCs
+## A reference dashed line is also shown on the barplot. 
+## This reference line corresponds to the expected value 
+## if the contribution where uniform.
+
+fviz_contrib(raster.pca, choice = "var", axes = 1)
+fviz_contrib(raster.pca, choice = "var", axes = 2)
+fviz_contrib(raster.pca, choice = "var", axes = 3)  
+fviz_contrib(raster.pca, choice = "var", axes = 4) 
+
+# rm(soil.pca.plot, soil.pca)
+
+```
+
+
+```{r}
+
+# Kaiser Guttman criteria - select PCs that explain the more than
+# the average across all PCs
+
+ev <- raster.pca$eig[ ,1] # select eigenvalues for each variable
+barplot(ev)
+abline(h = mean(ev), col = "red3")
+legend("topright", "Average Eigenvalue", col = "red3")
+
+# useful information down to PC3
+
+```
+
+```{r}
+#Make a scree plot using base graphics : A scree plot is a graph of the eigenvalues/variances associated with components.
+eigenvalues <- raster.pca$eig
+barplot(eigenvalues[, 2], names.arg=1:nrow(eigenvalues), 
+       main = "Variances",
+       xlab = "Principal Components",
+       ylab = "Percentage of variances",
+       col ="steelblue")
+# Add connected line segments to the plot
+lines(x = 1:nrow(eigenvalues), eigenvalues[, 2], 
+      type="b", pch=19, col = "red")
+```
+
+##Reattaching locations and categorical variables to PC scores 
+```{r}
+pc_scores <- as.data.frame(raster.pca$ind$coord)
+```
+
+```{r}
+data2 <- read.csv(here(pca_loc, 'RandPoints_Ext_locations.csv'), header= TRUE)
+```
+
+```{r}
+with_loc <- merge(data2, pc_scores, by = 0)
+#write.csv(with_loc, file = "PCScores_noColinear_5-10-24.csv")
+```
+
+```{r}
+cols <- c("#F72424", "#0000FF", "#A0A0A050")
+ordered <- with_loc[order(with_loc$Type, decreasing = TRUE), ]
+
+points <- ggplot(ordered, aes(x = Dim.1, y = Dim.2, color = Type, order = Type)) +
+  geom_hline(yintercept = 0, linetype = "solid", size = 1, colour = "black") +  # Bold zero horizontal line
+  geom_vline(xintercept = 0, linetype = "solid", size = 1, colour = "black") +
+  geom_point() +
+  scale_color_manual(values = cols) + 
+  theme_bw()+
+  xlab("PC1") + ylab("PC2")
+   # Bold zero vertical line
+points
+
+#png("All_PCScores_2024-4-09.png", height = 8, width = 12, unit = "in", res = 800)
+#print(points)
+#dev.off()
+```
+
+```{r}
+pc2 <- with_loc %>% dplyr::select(c(Lat, Long, Dim.2))
+write.csv(pc2, here(outputs_loc,"PC2_noColinear.csv"))
+```
+
+
+
+
+
+
+##trying PCA only with BNF data
+```{r}
+#attach raster data to all for type
+#subset for bnf 
+#remove columns we don't want
+
+bnf <- merge(raster_data, data2, by = 0)
+
+bnf <- bnf %>% filter( Type == "BNF")
+
+bnf <- bnf %>% dplyr::select(-c(OID.., Lat, Long, Type, PresAbs, IGBP, Row.names))
+```
+
+```{r}
+# Perform PCA with FactoMineR 
+# visualize with factoextra
+
+bnf.pca <- FactoMineR::PCA(bnf)
+ 
+summary(bnf.pca)  
+
+  ## unknown scaling for the below plot
+```
+
+```{r}
+library(ggrepel)
+# Control variable colors using their contribution
+# Possible values for the argument col.var are :
+  # "cos2", "contrib", "coord", "x", "y"
+fviz_pca_var(bnf.pca, col.var="contrib") +
+scale_color_gradient2(low="blue", mid="yellow", 
+                      high="orange", midpoint=5)+theme_bw()
+```
+
+
+
+
+
+```{r}
+bnf.pca.plot <- factoextra::fviz_pca_biplot(bnf.pca, # PCA object
+                axes = c(1, 2), # graph first two PCs
+                geom.ind = "point", # display trees as points
+                geom.var = c("arrow", "text"), # add arrows and text to variables
+                pointsize = 2, # increase size of tree points
+                labelsize = 6, # increase graph label font size
+                alpha = 0.5, # fade points/ellipses to read better
+                arrowsize = 1,
+                #habillage = as.factor(soil_samp$site), 
+                # habillage = as.factor(soil_clusters),
+                addEllipses = FALSE, # draw ellipses around groups (sites)
+                ellipse.level = 0.95,
+                #palette = pal3, # match palette with other plots
+                col.ind ="grey",
+                col.var = "blue", # make arrows/text of var black
+                ggrepel = TRUE, # avoid label overlap
+                mean.point = FALSE) + # remove site average point
+        theme(panel.grid = element_blank(),
+        legend.title = element_blank()) +
+  geom_text(aes(x= -5, y = 4), label = "", size = 4) +
+  theme(text = element_text(size = 17),
+        axis.title = element_text(size = 17),
+        axis.text = element_text(size = 17),
+        title = element_blank()) 
+
+bnf.pca.plot
+
+# export plot to output folder
+
+#png("All_PCA_2024-4-09.png", height = 8, width = 12, unit = "in", res = 800)
+#print(raster.pca.plot)
+#dev.off()
+```
+## And with all of the data? 
+```{r}
+cols <- c("#F72424", "#0000FF", "#A0A0A050")
+ordered <- bnf[order(bnf$Type, decreasing = TRUE), ]
+
+points <- ggplot(ordered, aes(x = Dim.1, y = Dim.2, color = Type, order = Type)) +
+  geom_hline(yintercept = 0, linetype = "solid", size = 1, colour = "black") +  # Bold zero horizontal line
+  geom_vline(xintercept = 0, linetype = "solid", size = 1, colour = "black") +
+  geom_point() +
+  scale_color_manual(values = cols) + 
+  theme_bw()+
+  xlab("PC1") + ylab("PC2")
+   # Bold zero vertical line
+points
+
+#png("All_PCScores_2024-4-09.png", height = 8, width = 12, unit = "in", res = 800)
+#print(points)
+#dev.off()
+```
+
+
+```{r}
+pc1 <- with_loc %>% dplyr::select(c(Lat, Long, Dim.1))
+```
+
+
+##rasterize PC scores? 
+```{r}
+# Load existing raster
+existing_raster <- raster("SoilGrids_organiccarbon_Clipped.tif")
+
+# Get extent of existing raster
+existing_extent <- extent(existing_raster)
+
+# Convert the extent to a polygon
+#existing_polygon <- as(existing_extent, "SpatialPolygons")
+
+# Extract the coordinates of the polygon
+#polygon_coords <- coordinates(existing_polygon)
+
+# Convert the dataframe to a SpatialPointsDataFrame
+coordinates(pc1) <- c("Long", "Lat")
+
+# Generate random points within the polygon
+#num_points <- 1000
+#random_points <- spsample(existing_polygon, n=num_points, type="random")
+
+# Assign random values to points
+#point_values <- runif(num_points, min=0, max=100)
+
+# Generate raster from existing points within the extent of the existing raster
+rasterized <- rasterize(pc1, existing_raster, field="Dim.1")
+
+# Plot the rasterized result
+plot(rasterized)
+
+# Optionally, save the raster to a file
+#writeRaster(rasterized, filename="rasterized_output.tif", format="GTiff", overwrite=TRUE)
+
+```
+
+
+```{r}
+#write.csv(with_loc, file = "PCScores_all.csv")
+```
+
+
+
+
+
+
+##PCA with limited variables 
+
+##COLINEARITY
+```{r}
+#remove NA values and test for colinearity 
+ raster_data[raster_data==0] <- NA
+ raster_data
+ 
+ raster_data_noZeros<-raster_data[complete.cases(raster_data),]
+
+
+# We can visually look for correlations between variables:
+heatmap(abs(cor(raster_data_noZeros)), 
+        # Compute pearson correlation (note they are absolute values)
+        col = rev(heat.colors(6)), 
+        Colv = NA, Rowv = NA)
+legend("topright", 
+       title = "Absolute Pearson R",
+       legend =  round(seq(0,1, length.out = 6),1),
+       y.intersp = 0.7, bty = "n",
+       fill = rev(heat.colors(6)))
+```
+
+
+
+
+##RDA 
+```{r}
+igbp_rda <- read.csv(file="RandPoints_Ext_RDA.csv", header= TRUE)
+```
+
+```{r}
+
+with_loc <- merge(raster_data, igbp_rda, by = 0)
+with_loc <- with_loc %>% dplyr::select(-c(Row.names))
+
+ with_loc[with_loc==0] <- NA
+ with_loc
+ 
+ pca_rda<-with_loc[complete.cases(with_loc),]
+#variables already normalized
+```
+
+
+```{r}
+# Model the effect of all environmental variables on fish
+# community composition
+rda <- rda(raster_data_noZeros$PresAbs ~ ., data = raster_data_noZeros)
+```
+
+
+
+
+##GAM
+
+##Try and standardize to a range, look into gam assumptions!!
+
+```{r}
+library(mgcv)
+gam_data <- read.csv(here(pca_loc,"RandPoints_Ext_all_GAM.csv"), header = TRUE)
+gam_data <- merge(gam_data, raster_data, by = 0)
+gam_data <- merge(gam_data, pc_scores, by = 0)
+gam_data <- gam_data %>% dplyr::select(-c(Row.names))
+colnames(gam_data)[which(names(gam_data) == "Dim.1")] <- "pc1"
+#If run with above, data is already normalized and standardized 
+
+```
+
+
+MAT+Slope+SoilP+DtB1
+PPT+AET+Seasonality+NPP+
+SoilOC+SoilN
+##GAM is overfitting when I add in AET 
+```{r}
+tmp_sdm<-gam(PresAbs~ SoilN+SoilOC+NPP+MAT+Slope+SoilP+DtB1,family = binomial, data=gam_data, select = TRUE, method="GCV.Cp")
+#Then when you want to predict, you just:
+Gam_pred <- predict.gam(tmp_sdm, newdata=data, type="response")
+Gam_pred <- as.data.frame(Gam_pred)
+#predictions for presence absence at each point based only on PPT and MAT
+```
+
+```{r}
+hist(Gam_pred$Gam_pred)
+```
+
+```{r}
+gam_loc <- merge(Gam_pred, data2, by = 0)
+gam_loc <- gam_loc %>% dplyr::select(c(Lat, Long, Gam_pred))
+ gam_loc[gam_loc==0] <- NA
+ gam_loc
+ 
+ gam_loc<-gam_loc[complete.cases(gam_loc),]
+#write.csv(gam_loc, file = "Gam_pred_noAET.csv")
+```
+
+
+##rasterize PC scores? This didn't work I don't think... 
+```{r}
+# Load existing raster
+existing_raster <- raster("SoilGrids_organiccarbon_Clipped.tif")
+
+# Get extent of existing raster
+existing_extent <- extent(existing_raster)
+
+# Convert the extent to a polygon
+#existing_polygon <- as(existing_extent, "SpatialPolygons")
+
+# Extract the coordinates of the polygon
+#polygon_coords <- coordinates(existing_polygon)
+
+# Convert the dataframe to a SpatialPointsDataFrame
+coordinates(pc1) <- c("Long", "Lat")
+
+# Generate random points within the polygon
+#num_points <- 1000
+#random_points <- spsample(existing_polygon, n=num_points, type="random")
+
+# Assign random values to points
+#point_values <- runif(num_points, min=0, max=100)
+
+# Generate raster from existing points within the extent of the existing raster
+rasterized <- rasterize(pc1, existing_raster, field="Dim.1")
+
+# Plot the rasterized result
+plot(rasterized)
+
+# Optionally, save the raster to a file
+#writeRaster(rasterized, filename="rasterized_output.tif", format="GTiff", overwrite=TRUE)
+
+```
+
+
+```{r}
+hist(gam_data$AET)
+```
+
+
+```{r}
+tmp_sdm2<-gam(PresAbs~ AET,family = binomial, data=gam_data, select = TRUE, method="GCV.Cp")
+#Then when you want to predict, you just:
+Gam_pred2 <- predict.gam(tmp_sdm2, newdata=data, type="response")
+Gam_pred2 <- as.data.frame(Gam_pred2)
+#predictions for presence absence at each point based only on PPT and MAT
+```
+
+```{r}
+hist(Gam_pred2$Gam_pred)
+```
+
+#What Brian sent: 
+```{r}
+tmp_sdm<-gam(PresAbs~ s(x1)+s(x2)+x3,family = binomial, data=gam_data,select = TRUE, method="GCV.Cp")
+
+#Then when you want to predict, you just:
+predict.gam(tmp_sdm, newdata=dat2, type="response")
+```
+
+For the latter, you can either get the output (probabilities), using type="response", or the linear combination logit transform by leaving it out. I think you're interested in the type="response"
+
+
+
+
+
+
+
+
+

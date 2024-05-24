@@ -1,0 +1,876 @@
+---
+title: "BioGeoBiasTrial"
+output: html_document
+date: '2023-09-05'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#setwd('/Users/katienelson/Documents/McGill_PhD/Tropical_BioGeo_Bias')
+```
+
+###IF YOU USE THIS YOU NEED TO FIX THE PATHWAYS##
+```{r}
+library(lattice)
+library(gstat)
+library(sp)
+library(ggplot2)
+library(dplyr)
+#library(caret)
+#library(AppliedPredictiveModeling)
+library(scales)
+library(plotly)
+#library(rgdal)
+library(raster)
+#library(rgeos)
+library(dismo)
+library(sf)
+library(tidyverse)
+library(hrbrthemes)
+library(terra)
+library(RColorBrewer)
+library(here)
+```
+
+```{r}
+csv <- read.csv(here("Data", "Data_Nov_2023",'TropicalDenitrificationData_V4_fixedIGBP.csv'), header=TRUE)
+```
+
+```{r}
+write.csv(csv, here("Data", "file.csv"))
+```
+
+
+
+```{r}
+raster_data <- raster("Global_Gridded_Powell/ClippedGloballyGridded/IGBP_Asia_No17_Area.tif")
+
+r <- area(raster_data)
+r
+```
+
+```{r}
+p <- 310433552*30
+p
+```
+
+
+
+
+```{r}
+BNF <- read.csv('Data_Nov_2023/BNF_Extracted_2024-02-26.csv', header= TRUE)
+denit <- read.csv('Data_Nov_2023/TropicalDenitrificationData_V5.csv', header = TRUE)
+```
+
+
+
+
+KDE:Trying for precipitation
+```{r}
+raster_data <- raster("Global_Gridded_Powell/ClippedGloballyGridded/Terraclimate_ppt_2000_2020_Clipped.tif")
+```
+
+```{r}
+# Ensure x and y coordinates are numeric
+BNF$x <- as.numeric(as.character(BNF$x))
+BNF$y <- as.numeric(as.character(BNF$y))
+
+# Check for missing or NA values in x and y coordinates
+missing_values <- is.na(BNF$x) | is.na(BNF$ppt_terraclimate)
+if (any(missing_values)) {
+  cat("Warning: Missing or NA values found in x or y coordinates. These will be omitted.\n")
+  BNF <- BNF[!missing_values, ]
+}
+
+```
+
+```{r}
+coordinates(BNF) <- c("x", "y")
+proj4string(BNF) <- CRS(proj4string(raster_data))  # Assign projection
+```
+
+```{r}
+point_density <- raster::density(BNF$ppt_terraclimate)
+point_density
+```
+
+
+```{r}
+# Kernel Density Estimation (KDE)
+# For raster data
+raster_density <- raster::density(raster_data)
+```
+
+```{r}
+# Interpolate point density onto the grid of raster density
+point_density_interp <- projectRaster(point_density, raster_data)
+```
+
+
+
+```{r}
+# Comparison of Density Functions
+# Calculate the difference between density functions
+density_diff <- raster_density - point_density
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+#BNF_MAT <- BNF[!apply(is.na(BNF$MAT) | BNF == "", 1, all),]
+```
+
+
+```{r}
+#lmMAT = lm(MAT~mat_terraclimate, data = BNF_MAT) #Create the linear regression
+#summary(lmMAT) #Review the results
+```
+
+```{r}
+BNF_MAP <- BNF[!apply(is.na(BNF$MAP) | BNF == "", 1, all),]
+```
+
+```{r}
+BNF_MAP$MAP <- as.numeric(BNF_MAP$MAP)
+```
+
+
+```{r}
+BNF_MAP <- subset(BNF_MAP, MAP < 8000, select = rowid:notes)
+```
+
+
+```{r}
+plot(BNF_MAP$MAP, BNF_MAP$ppt_terraclimate)
+```
+
+```{r}
+lmMAP = lm(MAP~ppt_terraclimate, data = BNF_MAP) #Create the linear regression
+summary(lmMAP) #Review the results
+```
+
+```{r}
+
+```
+
+
+
+
+
+
+#Field data in percent, global in cg/kg
+```{r}
+BNF_soilN <- BNF[!apply(is.na(BNF$soil_N) | BNF == "", 1, all),]
+```
+
+```{r}
+plot(BNF_soilN$soil_N, BNF_soilN$soil_N_soilgrids)
+```
+#Field data in percent, global in g/kg
+```{r}
+BNF_soilC <- BNF[!apply(is.na(BNF$soil_C) | BNF == "", 1, all),]
+```
+
+```{r}
+plot(BNF_soilC$soil_C, BNF_soilC$soil_C_soilgrids)
+```
+
+
+
+
+
+
+
+RASTER HISTOGRAM
+Using precipitation
+
+
+```{r}
+lidar_dem <- raster(x = "Global_Gridded_Powell/ClippedGloballyGridded/IGBP_MODIS_2019_noZeros.tif")
+
+# plot raster data
+plot(lidar_dem,
+     main = "MODIS IGBP 2019 Clipped")
+```
+Plot raster histogram
+```{r}
+# plot histogram
+hist(lidar_dem,
+     main = "Terraclimate Precipitation 2020 Clipped",
+     xlab = "Precipitation (mm)", ylab = "Frequency",
+     col = "springgreen")
+```
+Plot points histogram
+```{r}
+hist(BNF$IGBP)
+```
+
+```{r}
+hist(denit$Fine_res.class.FINAL)
+```
+
+
+Convert raster values to data frame
+```{r}
+ppt_2020 <- brick("Global_Gridded_Powell/ClippedGloballyGridded/IGBP_MODIS_2019_noZeros.tif")
+```
+
+```{r}
+igbp_df <- as.data.frame(rasterToPoints(ppt_2020,spatial = TRUE))
+head(igbp_df)
+```
+Make sure it worked
+```{r}
+hist(ppt_2020_df$Terraclimate_ppt_2000_2020_Clipped)
+```
+Cumulative Density Frequency of the raster values
+```{r}
+ppt_cdf <- ecdf(ppt_2020_df$Terraclimate_ppt_2000_2020_Clipped)
+plot(ppt_cdf)
+```
+Save those as a data frame, though maybe unnecessary 
+```{r}
+x <- ppt_cdf(ppt_2020_df$Terraclimate_ppt_2000_2020_Clipped)
+ppt_cdf_values <- data.frame(x, ppt_2020_df$Terraclimate_ppt_2000_2020_Clipped)
+```
+
+Make sure it worked
+```{r}
+plot(ppt_cdf_values$ppt_2020_df.Terraclimate_ppt_2000_2020_Clipped, ppt_cdf_values$x)
+```
+
+Plot CDF of raster and of points together 
+
+```{r}
+ecdf3 <- ecdf(ppt_2020_df$Terraclimate_ppt_2000_2020_Clipped)
+ecdf2 <- ecdf(BNF_MAP$MAP)
+
+plot(ecdf3, verticals=TRUE, do.points=FALSE, xlab = 'Precipitation (mm)', ylab = 'Cumulative density frequency')
+plot(ecdf2, verticals=TRUE, do.points=FALSE, add=TRUE, col='brown')
+```
+
+
+
+Try a bar plot with percent of data in a bin on the y
+
+```{r}
+h = hist(ppt_2020_df$Terraclimate_ppt_2000_2020_Clipped, plot = FALSE) # or hist(x,plot=FALSE) to avoid the plot of the histogram
+h$density = h$counts/sum(h$counts)*100
+plot(h,freq=FALSE)
+```
+
+
+```{r}
+histogram(~Terraclimate_ppt_2000_2020_Clipped, data = ppt_2020_df, breaks=seq(from=0,to=15000,by=1000))
+```
+
+
+```{r}
+g = hist(BNF_MAP$MAP, plot = FALSE) # or hist(x,plot=FALSE) to avoid the plot of the histogram
+g$density = g$counts/sum(g$counts)*100
+plot(g,freq=FALSE)
+```
+
+```{r}
+plot(h,freq=FALSE, col = 'blue', xlab = 'Precipitation (mm)', ylab = 'Percent of total', main = '', xlim = c(0,8000))
+plot(g,freq=FALSE, add = TRUE, col = 'green')
+legend('topright', c('Raster precip', 'point precip'), fill=c('blue', 'green'))
+```
+```{r}
+hist(denit$Extracted_Terraclimate_ppt_2000_2020)
+```
+
+
+
+
+
+
+```{r}
+# Assuming df1 and df2 are your dataframes with the respective columns
+
+# Create density plots using ggplot2
+x_axis_extent <- c(0,10000)
+ggplot() +
+  geom_density(data = BNF_MAP, aes(x = MAP, y = ..scaled..), fill = "blue", alpha = 0.5) +
+  geom_density(data = ppt_2020_df, aes(x = Terraclimate_ppt_2000_2020_Clipped, y = ..scaled..), fill = "red", alpha = 0.5) +
+  labs(title = "Density Plot of Two Datasets", x = "Your Variable", y = "Density") +
+  xlim(x_axis_extent) +
+  theme_minimal()
+
+```
+If the y-axis of a density plot reaches one at a particular point, it means that the probability density at that specific value is at its maximum within the plotted range. In other words, the data is most concentrated around that particular value.
+
+
+
+
+```{r}
+x_axis_extent <- c(0,10000)
+ggplot() +
+  geom_density(data = BNF_MAP, aes(x = MAP, y = ..scaled.., fill = "Precipitation - Fixation points"), alpha = 0.5) +
+  geom_density(data = ppt_2020_df, aes(x = Terraclimate_ppt_2000_2020_Clipped, y = ..scaled.., fill = "Precipitation - Tropics"), alpha = 0.5) +
+  labs(title = "Precipitation", x = "Mean Annual Precipitation (mm)", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = c("blue", "red"), name = "") +
+  theme(legend.position = c(0.85, 0.85))  # Adjust these values for the desired position
+```
+
+
+
+```{r}
+# Assuming df1, df2, and df3 are your dataframes with the respective columns
+
+# Install and load necessary libraries if not already installed
+# install.packages("ggplot2")
+# library(ggplot2)
+
+# Set your desired x-axis extent
+x_axis_extent <- c(0,10000)
+
+# Specify the colors for each dataset
+color_palette <- c("Precipitation - Tropics" = "purple", "Precipitation - Fixation points" = "blue", "Precipitation - Denitrification points" = "green")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = ppt_2020_df, aes(x = Terraclimate_ppt_2000_2020_Clipped, fill = "Precipitation - Tropics"), alpha = 0.5) +
+  geom_density(data = BNF_MAP, aes(x = MAP, fill = "Precipitation - Fixation points"), alpha = 0.5) +
+  geom_density(data = denit, aes(x = Extracted_Terraclimate_ppt_2000_2020, fill = "Precipitation - Denitrification points"), alpha = 0.5) +
+  labs(title = "Density Plot of Precipitation", x = "Mean Annual Precipitation (mm)", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.85))  # Adjust these values for the desired position
+
+```
+
+
+
+
+
+
+
+
+
+N Deposition
+```{r}
+NDep <- raster(x = "Global_Gridded_Powell/ClippedGloballyGridded/NDep_NoOcean2.tif")
+
+# plot raster data
+plot(NDep,
+     main = "N Deposition 2050")
+```
+
+Convert raster values to data frame
+```{r}
+NDep <- brick("Global_Gridded_Powell/ClippedGloballyGridded/N-deposition2050_Clipped.tif")
+```
+
+```{r}
+NDep_df <- as.data.frame(rasterToPoints(NDep,spatial = TRUE))
+head(NDep_df)
+NDep_df$N.deposition2050_Clipped
+```
+
+
+```{r}
+# Assuming df1, df2, and df3 are your dataframes with the respective columns
+
+# Install and load necessary libraries if not already installed
+# install.packages("ggplot2")
+# library(ggplot2)
+
+# Set your desired x-axis extent
+x_axis_extent <- c(0,4000)
+
+# Specify the colors for each dataset
+color_palette <- c("N Dep - Tropics" = "grey", "N Dep - Fixation points" = "red", "N Dep - Denitrification points" = "blue")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = NDep_df, aes(x = N.deposition2050_Clipped, fill = "N Dep - Tropics"), alpha = 0.5) +
+  geom_density(data = BNF, aes(x = N_Dep1, fill = "N Dep - Fixation points"), alpha = 0.5) +
+  geom_density(data = denit, aes(x = N_Dep1, fill = "N Dep - Denitrification points"), alpha = 0.5) +
+  labs(title = "Density Plot of N Deposition 2050", x = "mg N/m²/year", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.85))  # Adjust these values for the desired position
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+Depth to Bedrock
+```{r}
+DtB <- raster(x = "Global_Gridded_Powell/ClippedGloballyGridded/ClippedDepthToBedrock_cm_250m.tif")
+
+# plot raster data
+plot(DtB,
+     main = "Depth to Bedrock")
+```
+```{r}
+a1 <- aggregate(DtB, 6)
+```
+
+
+
+Convert raster values to data frame
+```{r}
+DtB <- brick(a1)
+```
+
+```{r}
+DtB_df <- as.data.frame(rasterToPoints(DtB,spatial = TRUE))
+head(DtB_df)
+
+```
+
+
+
+```{r}
+# Assuming df1, df2, and df3 are your dataframes with the respective columns
+
+# Install and load necessary libraries if not already installed
+# install.packages("ggplot2")
+# library(ggplot2)
+
+# Set your desired x-axis extent
+x_axis_extent <- c(0,50000)
+
+# Specify the colors for each dataset
+color_palette <- c("DtB- Tropics" = "grey", "DtB - Fixation points" = "red", "DtB - Denitrification points" = "blue")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = DtB_df, aes(x = ClippedDepthToBedrock_cm_250m, fill = "DtB - Tropics"), alpha = 0.5) +
+  geom_density(data = BNF, aes(x = DtB1, fill = "DtB - Fixation points"), alpha = 0.5) +
+  geom_density(data = denit, aes(x = DtB1, fill = "DtB - Denitrification points"), alpha = 0.5) +
+  labs(title = "Density Plot of Depth to Bedrock", x = "cm", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
+```
+
+
+
+
+
+
+Elevation
+```{r}
+Elev <- raster(x = "Global_Gridded_Powell/ClippedGloballyGridded/Elevation_Clipped.tif")
+
+# plot raster data
+plot(Elev,
+     main = "Elevation")
+```
+
+Convert raster values to data frame
+```{r}
+Elev <- brick("Global_Gridded_Powell/ClippedGloballyGridded/Elevation_Clipped.tif")
+```
+
+```{r}
+Elev_df <- as.data.frame(rasterToPoints(Elev,spatial = TRUE))
+head(Elev_df)
+
+```
+##subset out the zero values for the ocean
+```{r}
+Elev_df <- subset(Elev_df, Elevation_Clipped > 0, select = c(Elevation_Clipped:y))
+```
+
+
+
+```{r}
+# Assuming df1, df2, and df3 are your dataframes with the respective columns
+
+# Install and load necessary libraries if not already installed
+# install.packages("ggplot2")
+# library(ggplot2)
+
+# Set your desired x-axis extent
+x_axis_extent <- c(0,4000)
+
+# Specify the colors for each dataset
+color_palette <- c("Elevation - Tropics" = "grey", "Elevation - Fixation points" = "red", "Elevation - Denitrification points" = "blue")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = Elev_df, aes(x = Elevation_Clipped, fill = "Elevation - Tropics"), alpha = 0.5) +
+  geom_density(data = BNF, aes(x = Elevation, fill = "Elevation - Fixation points"), alpha = 0.5) +
+  geom_density(data = denit, aes(x = Elevation, fill = "Elevation - Denitrification points"), alpha = 0.5) +
+  labs(title = "Density Plot of Elevation", x = "Meters above sea level", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.85))  # Adjust these values for the desired position
+
+```
+
+
+
+
+
+
+Slope
+```{r}
+Slope <- raster(x = "Global_Gridded_Powell/ClippedGloballyGridded/Slope_Clipped_1km.tif")
+
+# plot raster data
+plot(Slope,
+     main = "Slope")
+```
+
+Convert raster values to data frame
+```{r}
+Slope <- brick("Global_Gridded_Powell/ClippedGloballyGridded/Slope_Clipped_1km.tif")
+```
+
+```{r}
+Slope_df <- as.data.frame(rasterToPoints(Slope,spatial = TRUE))
+head(Slope_df)
+
+```
+
+
+```{r}
+# Assuming df1, df2, and df3 are your dataframes with the respective columns
+
+# Install and load necessary libraries if not already installed
+# install.packages("ggplot2")
+# library(ggplot2)
+
+# Set your desired x-axis extent
+x_axis_extent <- c(0,4000)
+
+# Specify the colors for each dataset
+color_palette <- c("N Dep - Tropics" = "grey", "N Dep - Fixation points" = "red", "N Dep - Denitrification points" = "blue")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = NDep_df, aes(x = N.deposition2050_Clipped, fill = "N Dep - Tropics"), alpha = 0.5) +
+  geom_density(data = BNF, aes(x = N_Dep1, fill = "N Dep - Fixation points"), alpha = 0.5) +
+  geom_density(data = denit, aes(x = N_Dep1, fill = "N Dep - Denitrification points"), alpha = 0.5) +
+  labs(title = "Density Plot of N Deposition 2050", x = "mg N/m²/year", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.85))  # Adjust these values for the desired position
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##Categorical variables 
+```{r}
+igbp <- read.csv(file = "IGBP/AreasIGBP.csv", header = TRUE)
+```
+
+```{r}
+igbp_fine <- read.csv(file = "IGBP/IGBP_Plotting_fine.csv", header = TRUE)
+igbp_rough <- read.csv(file = "IGBP/IGBP_Plotting_rough.csv", header = TRUE)
+
+igbp.sm <- read.csv(file = "IGBP/AreasIGBP_smaller.csv", header = TRUE)
+```
+all, fix, denit
+
+
+
+
+Pie chart
+```{r}
+#USPersonalExpenditure <- data.frame("Categorie" = rownames(USPersonalExpenditure), USPersonalExpenditure)
+#data <- USPersonalExpenditure[, c('Categorie', 'X1960')]
+
+#colors <- c('rgb(211,94,96)', 'rgb(128,133,133)', 'rgb(144,103,167)', 'rgb(171,104,87)', 'rgb(114,147,203)')
+
+fig <- plot_ly(igbp.sm, labels = ~Biome, values = ~Shape_Area, type = 'pie',
+        textposition = 'inside',
+        textinfo = 'label+percent',
+        insidetextfont = list(color = '#FFFFFF'),
+        hoverinfo = 'text')
+       # text = ~paste('$', X1960, ' billions'))
+        #marker = list(colors = colors,
+                     # line = list(color = '#FFFFFF', width = 1)),
+                      #The 'pull' attribute can also be used to create space between the sectors
+        #showlegend = FALSE)
+fig <- fig %>% layout(title = ' ', legend = FALSE,
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+
+fig 
+```
+
+
+
+```{r}
+# Assuming you have defined your RColorBrewer palette
+my_palette <- brewer.pal(8, "PRGn")  # Change "Set1" to any RColorBrewer palette you prefer
+
+fig <- plot_ly(igbp.sm, 
+               labels = ~Biome, 
+               values = ~Shape_Area, 
+               type = 'pie',
+               textposition = 'inside',
+               textinfo = 'label+percent',
+               insidetextfont = list(color = '#FFFFFF'),
+               hoverinfo = 'text',
+               marker = list(colors = my_palette))  # Use your RColorBrewer palette here
+
+fig <- fig %>% layout(title = ' ', 
+                      legend = FALSE,
+                      xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+                      yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+
+fig
+```
+
+
+
+
+Bar chart
+
+```{r}
+colors <- c("grey", "red", "blue")  # Replace with your desired colors
+
+# Define the order of categorical variables
+custom_order <- c("ENF", "EBF", "DNF", "DBF", "Mixed Forests", "Closed Shrublands", "Open Shrublands", "Woody Savannas", "Savannas", "Grassland", "Permanent Wetlands", "Barren")  # Replace with your desired order
+
+# Create a grouped bar plot using specific columns as y-values
+p <- plot_ly(igbp_fine, x = ~Biome, type = NULL, marker = list(opacity = 0.7)) %>%
+  add_trace(y = ~Percent_total, name = "Tropics Area (m<sup>2</sup>)", type = "bar", marker = list(color = colors[1])) %>%
+  add_trace(y = ~Percent_BNF_sites, name = "BNF", type = "bar", marker = list(color = colors[2])) %>%
+  add_trace(y = ~Percent_denit_sites, name = "Denitrification", type = "bar", marker = list(color = colors[3])) %>%
+  layout(title = "IGBP Fine-Scale Land Cover Comparison",
+         xaxis = list(title = "Biome", categoryorder = "array", categoryarray = custom_order),
+         yaxis = list(title = "Percent (%)"),
+         barmode = "group",
+         legend = list(x = 0.9, y = 0.9))
+
+# Print the updated plot
+p
+```
+
+```{r}
+colors <- c("grey", "red", "blue")  # Replace with your desired colors
+
+# Define the order of categorical variables
+custom_order <- c("ENF", "EBF", "DNF", "DBF", "Mixed Forests", "Savannas", "Grassland", "Permanent Wetlands", "Barren")  # Replace with your desired order
+
+# Create a grouped bar plot using specific columns as y-values
+p <- plot_ly(igbp_rough, x = ~Biome_rough, type = NULL, marker = list(opacity = 0.7)) %>%
+  add_trace(y = ~Percent_rough_total, name = "Tropics Area (m<sup>2</sup>)", type = "bar", marker = list(color = colors[1])) %>%
+  add_trace(y = ~Percent_rough_BNF, name = "BNF", type = "bar", marker = list(color = colors[2])) %>%
+  add_trace(y = ~Percent_rough_denit, name = "Denitrification", type = "bar", marker = list(color = colors[3])) %>%
+  layout(title = "IGBP Coarse-Scale Land Cover Comparison",
+         xaxis = list(title = "Biome", categoryorder = "array", categoryarray = custom_order),
+         yaxis = list(title = "Percent (%)"),
+         barmode = "group",
+         legend = list(x = 0.9, y = 0.9))
+
+# Print the updated plot
+p
+```
+
+
+
+```{r}
+colors <- c("grey", "red", "blue")  # Replace with your desired colors
+
+# Define the order of categorical variables
+custom_order <- c("ENF", "EBF", "DNF", "DBF", "Mixed Forests", "Closed Shrublands", "Open Shrublands", "Woody Savannas", "Savannas", "Grassland", "Permanent Wetlands", "Barren")  # Replace with your desired order
+
+# Create a grouped bar plot using specific columns as y-values
+p <- plot_ly(igbp_fine, x = ~Biome, type = NULL, marker = list(opacity = 0.7)) %>%
+  add_trace(y = ~Percent_total, name = "Tropics Area (m<sup>2</sup>)", type = "bar", marker = list(color = colors[1])) %>%
+  add_trace(y = ~Percent_BNF_Measurements, name = "BNF", type = "bar", marker = list(color = colors[2])) %>%
+  add_trace(y = ~Percent_denit_measurements, name = "Denitrification", type = "bar", marker = list(color = colors[3])) %>%
+  layout(title = "IGBP Fine-Scale Land Cover Comparison",
+         xaxis = list(title = "Biome", categoryorder = "array", categoryarray = custom_order),
+         yaxis = list(title = "Percent (%)"),
+         barmode = "group",
+         legend = list(x = 0.9, y = 0.9))
+
+# Print the updated plot
+p
+```
+
+
+```{r}
+colors <- c("grey", "red", "blue")  # Replace with your desired colors
+
+# Define the order of categorical variables
+custom_order <- c("ENF", "EBF", "DNF", "DBF", "Mixed Forests", "Savannas", "Grassland", "Permanent Wetlands", "Barren")  # Replace with your desired order
+
+# Create a grouped bar plot using specific columns as y-values
+p <- plot_ly(igbp_rough, x = ~Biome_rough, type = NULL, marker = list(opacity = 0.7)) %>%
+  add_trace(y = ~Percent_rough_total, name = "Tropics Area (m<sup>2</sup>)", type = "bar", marker = list(color = colors[1])) %>%
+  add_trace(y = ~Percent_rough_BNF_Measurements, name = "BNF", type = "bar", marker = list(color = colors[2])) %>%
+  add_trace(y = ~Percent_rough_denit_measurements, name = "Denitrification", type = "bar", marker = list(color = colors[3])) %>%
+  layout(title = "IGBP Coarse-Scale Land Cover Comparison",
+         xaxis = list(title = "Biome", categoryorder = "array", categoryarray = custom_order),
+         yaxis = list(title = "Percent (%)"),
+         barmode = "group",
+         legend = list(x = 0.9, y = 0.9))
+
+# Print the updated plot
+p
+```
+
+
+```{r}
+igbp_fine_sample <- read.csv(file = "IGBP_Fine_SamplingDensity.csv", header = TRUE)
+igbp_rough_sample <- read.csv(file = "IGBP_rough_SamplingDensity.csv", header = TRUE)
+```
+
+
+```{r}
+colors <- c("grey", "red", "blue")  # Replace with your desired colors
+
+# Define the order of categorical variables
+custom_order <- c("ENF", "EBF", "DNF", "DBF", "Mixed Forests", "Closed Shrublands", "Open Shrublands", "Woody Savannas", "Savannas", "Grassland", "Permanent Wetlands", "Barren")  # Replace with your desired order
+igbp_fine_sample$SampleRate_BNF_sites
+# Create a grouped bar plot using specific columns as y-values
+p <- plot_ly(igbp_fine_sample, x = ~Biome, type = NULL, marker = list(opacity = 0.7)) %>%
+  add_trace(y = ~SampleRate_BNF_sites, name = "BNF", type = "bar", marker = list(color = colors[2])) %>%
+  add_trace(y = ~SampleRate_denit_sites, name = "Denitrification", type = "bar", marker = list(color = colors[3])) %>%
+  layout(title = "IGBP Fine-Scale Land Cover Difference",
+         xaxis = list(title = "Biome", categoryorder = "array", categoryarray = custom_order),
+         yaxis = list(title = "Percent difference (%)"),
+         barmode = "group",
+         legend = list(x = 0.9, y = 0.95))
+
+# Print the updated plot
+p
+```
+
+```{r}
+colors <- c("grey", "red", "blue")  # Replace with your desired colors
+
+# Define the order of categorical variables
+custom_order <- c("ENF", "EBF", "DNF", "DBF", "Mixed Forests", "Savannas", "Grassland", "Permanent Wetlands", "Barren")  # Replace with your desired order
+igbp_fine_sample$SampleRate_BNF_sites
+# Create a grouped bar plot using specific columns as y-values
+p <- plot_ly(igbp_rough_sample, x = ~Biome_rough, type = NULL, marker = list(opacity = 0.7)) %>%
+  add_trace(y = ~SampleRate_BNF_sites, name = "BNF", type = "bar", marker = list(color = colors[2])) %>%
+  add_trace(y = ~SampleRate_denit_sites, name = "Denitrification", type = "bar", marker = list(color = colors[3])) %>%
+  layout(title = "IGBP Coarse-Scale Land Cover Difference",
+         xaxis = list(title = "Biome", categoryorder = "array", categoryarray = custom_order),
+         yaxis = list(title = "Percent difference (%)"),
+         barmode = "group",
+         legend = list(x = 0.9, y = 0.9))
+
+# Print the updated plot
+p
+```
+
+
+```{r}
+colors <- c("grey", "red", "blue")  # Replace with your desired colors
+
+# Define the order of categorical variables
+custom_order <- c("ENF", "EBF", "DNF", "DBF", "Mixed Forests", "Closed Shrublands", "Open Shrublands", "Woody Savannas", "Savannas", "Grassland", "Permanent Wetlands", "Barren")  # Replace with your desired order
+igbp_fine_sample$SampleRate_BNF_sites
+# Create a grouped bar plot using specific columns as y-values
+p <- plot_ly(igbp_fine_sample, x = ~Biome, type = NULL, marker = list(opacity = 0.7)) %>%
+  add_trace(y = ~SampleRate_BNF_measurements, name = "BNF", type = "bar", marker = list(color = colors[2])) %>%
+  add_trace(y = ~SampleRate_denit_measurements, name = "Denitrification", type = "bar", marker = list(color = colors[3])) %>%
+  layout(title = "IGBP Fine-Scale Land Cover Difference",
+         xaxis = list(title = "Biome", categoryorder = "array", categoryarray = custom_order),
+         yaxis = list(title = "Percent difference (%)"),
+         barmode = "group",
+         legend = list(x = 0.9, y = 0.95))
+
+# Print the updated plot
+p
+```
+
+```{r}
+colors <- c("grey", "red", "blue")  # Replace with your desired colors
+
+# Define the order of categorical variables
+custom_order <- c("ENF", "EBF", "DNF", "DBF", "Mixed Forests", "Savannas", "Grassland", "Permanent Wetlands", "Barren")  # Replace with your desired order
+igbp_fine_sample$SampleRate_BNF_sites
+# Create a grouped bar plot using specific columns as y-values
+p <- plot_ly(igbp_rough_sample, x = ~Biome_rough, type = NULL, marker = list(opacity = 0.7)) %>%
+  add_trace(y = ~SampleRate_BNF_measurements, name = "BNF", type = "bar", marker = list(color = colors[2])) %>%
+  add_trace(y = ~SampleRate_denit_measurements, name = "Denitrification", type = "bar", marker = list(color = colors[3])) %>%
+  layout(title = "IGBP Coarse-Scale Land Cover Difference",
+         xaxis = list(title = "Biome", categoryorder = "array", categoryarray = custom_order),
+         yaxis = list(title = "Percent difference (%)"),
+         barmode = "group",
+         legend = list(x = 0.9, y = 0.9))
+
+# Print the updated plot
+p
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

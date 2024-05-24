@@ -2,3 +2,13 @@
 .Rhistory
 .RData
 .Ruserdata
+.DS_Store
+
+*.qmd
+
+Scripts/TRENDYN/zonalMeanEnsemble.R
+Scripts/TRENDYN/zonalMeanEnsemble_nosave.R
+Scripts/TRENDYN/zonalMeanEnsemble_nosave_noref.R
+Data
+Outputs
+
