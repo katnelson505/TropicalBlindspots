@@ -1,0 +1,594 @@
+---
+title: "Models"
+output: html_document
+date: "2024-05-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(lattice)
+library(gstat)
+library(sp)
+library(ggplot2)
+library(scales)
+library(plotly)
+library(raster)
+library(dismo)
+library(sf)
+library(tidyverse)
+library(hrbrthemes)
+library(terra)
+library(RColorBrewer)
+#netCDF packages
+library(ncdf4)
+library(CFtime)
+library(stars)
+library(here)
+```
+
+
+##BNF first 
+```{r}
+loc <- here("Data", "TRENDYN")
+
+CP_BNF <- rast(here(loc, "CABLE-POP/fBNF_annually.nc"))
+CLASSIC_BNF <- rast(here(loc,"CLASSIC/fBNF_annually.nc"))
+CLM5_BNF <- rast(here(loc,"CLM5.0/fBNF_annually.nc"))
+DLEM_BNF <- rast(here(loc,"DLEM/fBNF_annually.nc"))
+ISAM_BNF <- rast(here(loc,"ISAM/fBNF_annually.nc"))
+JSBACH_BNF <- rast(here(loc,"JSBACH/fBNF_annually.nc"))
+JULES_ES_BNF <- rast(here(loc,"JULES-ES/fBNF_annually.nc"))
+LPJ_GUESS_BNF <- rast(here(loc,"LPJ-GUESS/fBNF_annually.nc"))
+LPX_Bern_BNF <- rast(here(loc,"LPX-Bern/fBNF_annually.nc"))
+OCNv2_BNF <- rast(here(loc,"OCNv2/fBNF_annually.nc"))
+ORCHIDEEv3_BNF <- rast(here(loc,"ORCHIDEEv3/fBNF_annually.nc"))
+```
+
+```{r}
+head(names(CLASSIC_BNF))
+```
+
+##as a raster
+```{r}
+class(CLASSIC_BNF)
+```
+
+```{r}
+plot(CLASSIC_BNF)
+```
+##change coordinates to normal
+```{r}
+CLASSIC_BNF <- rotate(CLASSIC_BNF)
+CLASSIC_BNF
+```
+```{r}
+plot(CLASSIC_BNF)
+```
+
+
+## read as a netcdf file
+```{r}
+Classic_NLoss_nc <- ncdf4::nc_open(here(loc, "CLASSIC/fNloss_annually.nc"))
+Classic_NLoss_nc
+```
+
+```{r}
+print(Classic_NLoss_nc)
+```
+
+
+
+
+
+##Average over the selected timestamps 
+```{r}
+data_var <- ncvar_get(Classic_NLoss_nc, "fNloss")
+time_var <- ncvar_get(Classic_NLoss_nc, "time")
+
+lat <- ncvar_get(Classic_NLoss_nc, "latitude")
+lon <- ncvar_get(Classic_NLoss_nc, "longitude")
+```
+
+
+
+```{r}
+nlat <- length(lat)
+nlon <- length(lon)
+ntime <- length(time_var)
+```
+
+
+```{r}
+selected_time_steps <- c(100:170)
+```
+
+```{r}
+rasters <- list()
+```
+
+
+
+```{r}
+# Extract data for the selected time steps and create raster layers
+for (i in selected_time_steps) {
+  data_slice <- data_var[,,i]
+  r <- raster(t(data_slice), xmn=min(lon), xmx=max(lon), ymn=min(lat), ymx=max(lat), crs=CRS("+proj=longlat +datum=WGS84"))
+  rasters[[length(rasters) + 1]] <- r
+}
+```
+
+```{r}
+# Combine the rasters into a raster brick
+raster_brick <- brick(rasters)
+#print(raster_brick)
+```
+
+```{r}
+# Calculate the average
+average_raster <- calc(raster_brick, mean)
+```
+
+```{r}
+average_raster <- flip(average_raster, direction = 'y')
+average_raster <- terra::rotate(average_raster)
+average_raster_units <- average_raster*(3.1104e+10)
+plot(average_raster_units)
+#average_raster
+
+# Define the output file path
+output_file <- "Orchideev3_Nloss_Avg.tif"
+
+# Write the adjusted average raster to a GeoTIFF file
+writeRaster(average_raster_units, output_file, format = "GTiff", overwrite = TRUE)
+```
+
+
+
+
+##All means and Variance Denit
+```{r}
+# Define the directory containing your raster files
+rasters_nloss <- here("Outputs", "AvgRasters", "Nloss")
+
+# List all .tif files in the directory
+raster_files <- list.files(rasters_nloss, pattern = "\\.tif$", full.names = TRUE)
+
+# Create a SpatRaster stack from the list of files
+raster_stack <- rast(raster_files)
+
+print(raster_stack)
+
+#writeRaster(raster_stack, file = "Stack_TRENDYN_Nloss.tif", format = "GTiff", overwrite = TRUE)
+
+# Calculate the variance of the raster stack
+#variance <- calc(raster_stack, var)
+
+# Plot the variance raster
+#plot(variance)
+
+# Write the adjusted average raster to a GeoTIFF file
+#writeRaster(variance, file = "Variance_TRENDYN_Nloss.tif", format = "GTiff", overwrite = TRUE)
+```
+
+
+
+```{r}
+
+
+# Convert the RasterStack to a SpatRaster
+spat_raster_stack <- rast(raster_stack)
+
+# Calculate the variance across the SpatRaster stack
+variance_raster <- app(spat_raster_stack, fun = function(x) var(x, na.rm = TRUE))
+
+# Plot the variance raster
+plot(variance_raster)
+
+#output_file <- "Variance_TRENDYN_Nloss.tif"
+#writeRaster(variance_raster, output_file, overwrite = TRUE)
+```
+
+# Denit - mean, stdev, cv
+```{r}
+# Calculate the mean across the raster stack, removing NA values
+mean_raster <- app(spat_raster_stack, fun = function(x) mean(x, na.rm = TRUE))
+#output_file <- "Mean_TRENDYN_Nloss.tif"
+#writeRaster(mean_raster, output_file, overwrite = TRUE)
+
+# Calculate the standard deviation across the raster stack, removing NA values
+sd_raster <- app(spat_raster_stack, fun = function(x) sd(x, na.rm = TRUE))
+#output_file <- "SD_TRENDYN_Nloss.tif"
+#writeRaster(sd_raster, output_file, overwrite = TRUE)
+
+# Calculate the coefficient of variation (CV)
+cv_raster <- sd_raster / mean_raster
+#output_file <- "CV_TRENDYN_Nloss.tif"
+#writeRaster(cv_raster, output_file, overwrite = TRUE)
+
+# Plot the CV raster
+plot(sd_raster)
+```
+
+
+
+
+
+##Variance BNF
+```{r}
+# Define the directory containing your raster files
+rasters_bnf <- here("Outputs", "AvgRasters", "BNF")
+
+# List all .tif files in the directory
+raster_files <- list.files(rasters_bnf, pattern = "\\.tif$", full.names = TRUE)
+
+# Create a SpatRaster stack from the list of files
+raster_stack <- rast(raster_files)
+
+# Calculate the variance of the raster stack
+#variance <- calc(raster_stack, var)
+
+# Plot the variance raster
+#plot(variance)
+
+# Write the adjusted average raster to a GeoTIFF file
+#writeRaster(variance, file = "Variance_TRENDYN_BNF.tif", format = "GTiff", overwrite = TRUE)
+```
+
+```{r}
+# Convert the RasterStack to a SpatRaster
+spat_raster_stack <- rast(raster_stack)
+
+# Calculate the variance across the SpatRaster stack
+variance_raster <- app(spat_raster_stack, fun = function(x) var(x, na.rm = TRUE))
+
+# Plot the variance raster
+plot(variance_raster)
+
+#output_file <- "Variance_TRENDYN_BNF.tif"
+#writeRaster(variance_raster, output_file, overwrite = TRUE)
+```
+
+# Denit - mean, stdev, cv
+```{r}
+# Calculate the mean across the raster stack, removing NA values
+mean_raster <- app(spat_raster_stack, fun = function(x) mean(x, na.rm = TRUE))
+output_file <- here("Outputs", "Mean_TRENDYN_BNF.tif")
+writeRaster(mean_raster, output_file, overwrite = TRUE)
+
+# Calculate the standard deviation across the raster stack, removing NA values
+sd_raster <- app(spat_raster_stack, fun = function(x) sd(x, na.rm = TRUE))
+output_file <- here("Outputs","SD_TRENDYN_BNF.tif")
+writeRaster(sd_raster, output_file, overwrite = TRUE)
+
+# Calculate the coefficient of variation (CV)
+cv_raster <- sd_raster / mean_raster
+output_file <- here("Outputs","CV_TRENDYN_BNF.tif")
+writeRaster(cv_raster, output_file, overwrite = TRUE)
+
+# Plot the CV raster
+plot(sd_raster)
+```
+
+
+
+##PLotting density curves
+##BNF - Variance
+
+```{r}
+data <- here("Data")
+bnf <- read.csv(here(data,'BNF_BNFExtract.csv'), header= TRUE)
+bnf_no_NA <- bnf %>% drop_na(Var_BNF1)
+
+denit <- read.csv(here(data,'Denit_NLossExtract.csv'), header= TRUE)
+denit_no_NA <- denit %>% drop_na(Var_Nloss1)
+```
+
+##NOT FIXED PATHWAYS
+```{r}
+model_bnf <- raster(x = "Clipped_Variance_TrendyN_BNF.tif")
+
+# plot raster data
+plot(model_bnf,
+     main = "BNF Variance TRENDY N")
+```
+
+```{r}
+model_bnf <- brick("Clipped_Variance_TrendyN_BNF.tif")
+```
+
+```{r}
+model_bnf_df <- as.data.frame(rasterToPoints(model_bnf,spatial = TRUE))
+#head(NDep_df)
+#NDep_df$N.deposition2050_Clipped
+```
+
+
+```{r}
+# Assuming df1, df2, and df3 are your dataframes with the respective columns
+
+# Install and load necessary libraries if not already installed
+# install.packages("ggplot2")
+# library(ggplot2)
+
+# Set your desired x-axis extent
+x_axis_extent <- c(0,60)
+
+# Specify the colors for each dataset
+color_palette <- c("BNF - Tropics" = "grey", "BNF - Sampled points" = "red")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = model_bnf_df, aes(x = lyr.1, fill = "BNF - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf_no_NA, aes(x = Var_BNF1, fill = "BNF - Sampled points"), alpha = 0.5) +
+  labs(title = "Density Plot of BNF model variance", x = "g N M-2 yr -1", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
+```
+
+#BNF Density curves - CV
+
+```{r}
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+cv_bnf <- brick(here(outputs, "CV_TRENDYN_BNF.tif"))
+cv_bnf_df <- as.data.frame(rasterToPoints(cv_bnf,spatial = TRUE))
+```
+
+```{r}
+# Assuming df1, df2, and df3 are your dataframes with the respective columns
+
+# Install and load necessary libraries if not already installed
+# install.packages("ggplot2")
+# library(ggplot2)
+
+# Set your desired x-axis extent
+x_axis_extent <- c(0,30)
+
+# Specify the colors for each dataset
+color_palette <- c("BNF - Tropics" = "grey", "BNF - Sampled points" = "red")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = cv_bnf_df, aes(x = lyr.1, fill = "BNF - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf_no_NA, aes(x = Var_BNF1, fill = "BNF - Sampled points"), alpha = 0.5) +
+  labs(title = "Density Plot of BNF model CV", x = "Coefficient of Variation", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
+```
+
+#BNF Density curves - CV - No Sahara
+
+```{r}
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+cv_bnf <- brick(here(outputs,"CV_TRENDYN_BNF_NoSahara.tif"))
+cv_bnf_df <- as.data.frame(rasterToPoints(cv_bnf,spatial = TRUE))
+```
+
+```{r}
+# Assuming df1, df2, and df3 are your dataframes with the respective columns
+
+# Install and load necessary libraries if not already installed
+# install.packages("ggplot2")
+# library(ggplot2)
+
+# Set your desired x-axis extent
+x_axis_extent <- c(0,30)
+
+# Specify the colors for each dataset
+color_palette <- c("BNF - Tropics" = "grey", "BNF - Sampled points" = "red")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = cv_bnf_df, aes(x = lyr.1, fill = "BNF - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf_no_NA, aes(x = Var_BNF1, fill = "BNF - Sampled points"), alpha = 0.5) +
+  labs(title = "Density Plot of BNF model CV - No Sahara", x = "Coefficient of Variation", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
+```
+
+SD_TRENDYN_BNF.tif
+```{r}
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+sd_bnf <- brick(here(outputs,"SD_TRENDYN_BNF_NoSahara.tif"))
+sd_bnf_df <- as.data.frame(rasterToPoints(sd_bnf,spatial = TRUE))
+```
+
+```{r}
+# Assuming df1, df2, and df3 are your dataframes with the respective columns
+
+# Install and load necessary libraries if not already installed
+# install.packages("ggplot2")
+# library(ggplot2)
+
+# Set your desired x-axis extent
+x_axis_extent <- c(0,30)
+
+# Specify the colors for each dataset
+color_palette <- c("BNF - Tropics" = "grey", "BNF - Sampled points" = "red")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = sd_bnf_df, aes(x = lyr.1, fill = "BNF - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf_no_NA, aes(x = Var_BNF1, fill = "BNF - Sampled points"), alpha = 0.5) +
+  labs(title = "Density Plot of BNF model StDev - No Sahara", x = "Standard Deviation", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
+```
+
+
+##NOT FIXED
+```{r}
+model_nloss <- raster(x = "Clipped_Variance_TrendyN_Nloss.tif")
+
+# plot raster data
+plot(model_nloss,
+     main = "N loss Variance TRENDY N")
+```
+
+```{r}
+model_nloss <- brick("Clipped_Variance_TrendyN_Nloss.tif")
+```
+
+```{r}
+model_nloss_df <- as.data.frame(rasterToPoints(model_nloss,spatial = TRUE))
+#head(NDep_df)
+#NDep_df$N.deposition2050_Clipped
+```
+
+
+
+```{r}
+# Assuming df1, df2, and df3 are your dataframes with the respective columns
+
+# Install and load necessary libraries if not already installed
+# install.packages("ggplot2")
+# library(ggplot2)
+
+# Set your desired x-axis extent
+x_axis_extent <- c(0,40)
+
+# Specify the colors for each dataset
+color_palette <- c("N loss - Tropics" = "grey", "Denit - Sampled points" = "blue")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = model_nloss_df, aes(x = lyr.1, fill = "N loss - Tropics"), alpha = 0.5) +
+  geom_density(data = denit_no_NA, aes(x = Var_Nloss1, fill = "Denit - Sampled points"), alpha = 0.5) +
+  labs(title = "Density Plot of N loss model variance", x = "g N m-2 yr -1", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
+```
+
+
+
+#Denit Density curves - CV
+
+```{r}
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+cv_denit <- brick(here(outputs,"CV_TRENDYN_Nloss.tif"))
+cv_denit_df <- as.data.frame(rasterToPoints(cv_denit,spatial = TRUE))
+```
+
+```{r}
+# Assuming df1, df2, and df3 are your dataframes with the respective columns
+
+# Install and load necessary libraries if not already installed
+# install.packages("ggplot2")
+# library(ggplot2)
+
+# Set your desired x-axis extent
+x_axis_extent <- c(0,30)
+
+# Specify the colors for each dataset
+color_palette <- c("N loss - Tropics" = "grey", "Denit - Sampled points" = "blue")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = cv_denit_df, aes(x = lyr.1, fill = "N loss - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf_no_NA, aes(x = Var_BNF1, fill = "Denit - Sampled points"), alpha = 0.5) +
+  labs(title = "Density Plot of Denit model CV", x = "Coefficient of Variation", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
+```
+
+
+#Denit Density curves - CV - No Sahara
+
+```{r}
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+cv_denit <- brick(here(outputs,"CV_TRENDYN_Nloss_NoSahara.tif"))
+cv_denit_df <- as.data.frame(rasterToPoints(cv_denit,spatial = TRUE))
+```
+
+```{r}
+# Assuming df1, df2, and df3 are your dataframes with the respective columns
+
+# Install and load necessary libraries if not already installed
+# install.packages("ggplot2")
+# library(ggplot2)
+
+# Set your desired x-axis extent
+x_axis_extent <- c(0,30)
+
+# Specify the colors for each dataset
+color_palette <- c("N loss - Tropics" = "grey", "Denit - Sampled points" = "blue")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = cv_denit_df, aes(x = lyr.1, fill = "N loss - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf_no_NA, aes(x = Var_BNF1, fill = "Denit - Sampled points"), alpha = 0.5) +
+  labs(title = "Density Plot of Denit model CV - No Sahara", x = "Coefficient of Variation", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
+```
+
+
+#Denit Density curves - StDev
+
+```{r}
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+sd_denit <- brick(here(outputs,"SD_TRENDYN_Nloss_NoSahara.tif"))
+sd_denit_df <- as.data.frame(rasterToPoints(sd_denit,spatial = TRUE))
+```
+
+```{r}
+# Assuming df1, df2, and df3 are your dataframes with the respective columns
+
+# Install and load necessary libraries if not already installed
+# install.packages("ggplot2")
+# library(ggplot2)
+
+# Set your desired x-axis extent
+x_axis_extent <- c(0,30)
+
+# Specify the colors for each dataset
+color_palette <- c("N loss - Tropics" = "grey", "Denit - Sampled points" = "blue")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = sd_denit_df, aes(x = lyr.1, fill = "N loss - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf_no_NA, aes(x = Var_BNF1, fill = "Denit - Sampled points"), alpha = 0.5) +
+  labs(title = "Density Plot of Denit model StDev - No Sahara", x = "Standard Deviation", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
