@@ -32,6 +32,7 @@ library(sf)
 library(tidyverse)
 library(hrbrthemes)
 library(terra)
+library(here)
 ```
 
 ##Locations 
@@ -58,6 +59,7 @@ for (col in 1:ncol(data)) {
 }
 ```
 
+#For the PCA
 ```{r}
 
 
@@ -119,6 +121,74 @@ for (col in 1:ncol(data)) {
     hist(data[,col], main=colnames(data)[col],  xlab=colnames(data)[col])
 }
 ```
+
+
+
+#For the GAM
+
+```{r}
+
+
+#data$PPT <- (data$PPT) +0.001
+
+#data$PPT <- log(data$PPT)
+
+data$MAT <- (data$MAT) +0.001
+
+data$MAT <- log(data$MAT)
+
+data$AET <- (data$AET) +0.001
+
+data$AET <- log(data$AET)
+
+data$NPP <- (data$NPP) +0.001
+
+data$NPP <- log(data$NPP)
+
+data$Ndep2050 <- (data$Ndep2050) +0.001
+
+data$Ndep2050 <- log(data$Ndep2050)
+
+data$Slope <- (data$Slope) +0.001
+
+data$Slope <- log(data$Slope)
+
+data$Seasonality <- (data$Seasonality) +0.001
+
+data$Seasonality <- log(data$Seasonality)
+
+#data$Roughness <- (data$Roughness) +0.001
+
+#data$Roughness <- log(data$Roughness)
+
+data$SoilOC <- (data$SoilOC) +0.001
+
+data$SoilOC <- log(data$SoilOC)
+
+data$SoilN <- (data$SoilN) +0.001
+
+data$SoilN <- log(data$SoilN)
+
+data$SoilP <- (data$SoilP) +0.001
+
+data$SoilP <- log(data$SoilP)
+
+data$SoilMoisture <- (data$SoilMoisture) +0.001
+
+data$SoilMoisture <- log(data$SoilMoisture)
+
+data$DtB1 <- (data$DtB1) +0.1
+
+data$DtB1 <- log(data$DtB1)
+```
+
+```{r}
+for (col in 1:ncol(data)) {
+    hist(data[,col], main=colnames(data)[col],  xlab=colnames(data)[col])
+}
+```
+
+
 
 
 
@@ -501,6 +571,26 @@ rda <- rda(raster_data_noZeros$PresAbs ~ ., data = raster_data_noZeros)
 ##GAM
 
 ##Try and standardize to a range, look into gam assumptions!!
+
+```{r}
+library(mgcv)
+gam_data <- read.csv(here(pca_loc,"RandPoints_Ext_all_GAM.csv"), header = TRUE)
+gam_data <- merge(gam_data, data, by = 0)
+gam_data <- gam_data %>% dplyr::select(-c(Row.names))
+
+tmp_sdm<-gam(PresAbs~ SoilN+SoilOC+NPP+MAT+Slope+SoilP+DtB1+AET+SoilMoisture,family = binomial, data=gam_data, select = TRUE, method="GCV.Cp")
+#Then when you want to predict, you just:
+Gam_pred <- predict.gam(tmp_sdm, newdata=data, type="response")
+Gam_pred <- as.data.frame(Gam_pred)
+#predictions for presence absence at each point based only on PPT and MAT
+```
+
+```{r}
+hist(Gam_pred$Gam_pred)
+```
+
+
+
 
 ```{r}
 library(mgcv)
