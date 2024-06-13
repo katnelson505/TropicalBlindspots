@@ -34,12 +34,12 @@ library(here)
 data_loc <- here("Data")
 pca_loc <- here("Data", "PCA")
 outputs_loc <- here("Outputs")
+averages_loc <- here("Outputs", "AvgRasters")
 ```
 
 ##BNF first 
 ```{r}
 loc <- here("Data", "TRENDYN")
-
 CP_BNF <- rast(here(loc, "CABLE-POP/fBNF_annually.nc"))
 CLASSIC_BNF <- rast(here(loc,"CLASSIC/fBNF_annually.nc"))
 CLM5_BNF <- rast(here(loc,"CLM5.0/fBNF_annually.nc"))
@@ -75,27 +75,35 @@ plot(CLASSIC_BNF)
 ```
 
 
+
+
+
+
+
+
+
+
+
 ## read as a netcdf file
 ```{r}
-Classic_NLoss_nc <- ncdf4::nc_open(here(loc, "CLASSIC/fNloss_annually.nc"))
-Classic_NLoss_nc
+Classic_Nloss_nc <- ncdf4::nc_open(here(loc, "ORCHIDEEv3/fNloss_annually.nc"))
+Classic_Nloss_nc
 ```
 
 ```{r}
-print(Classic_NLoss_nc)
+#print(Classic_BNF_nc)
 ```
-
 
 
 
 
 ##Average over the selected timestamps 
 ```{r}
-data_var <- ncvar_get(Classic_NLoss_nc, "fNloss")
-time_var <- ncvar_get(Classic_NLoss_nc, "time")
+data_var <- ncvar_get(Classic_Nloss_nc, "fNloss")
+time_var <- ncvar_get(Classic_Nloss_nc, "time")
 
-lat <- ncvar_get(Classic_NLoss_nc, "latitude")
-lon <- ncvar_get(Classic_NLoss_nc, "longitude")
+lat <- ncvar_get(Classic_Nloss_nc, "latitude")
+lon <- ncvar_get(Classic_Nloss_nc, "longitude")
 ```
 
 
@@ -108,7 +116,7 @@ ntime <- length(time_var)
 
 
 ```{r}
-selected_time_steps <- c(100:170)
+selected_time_steps <- c(149:171)
 ```
 
 ```{r}
@@ -145,7 +153,7 @@ plot(average_raster_units)
 #average_raster
 
 # Define the output file path
-output_file <- "Orchideev3_Nloss_Avg.tif"
+output_file <- here(averages_loc,"ORCHIDEEv3_Nloss_Avg.tif")
 
 # Write the adjusted average raster to a GeoTIFF file
 writeRaster(average_raster_units, output_file, format = "GTiff", overwrite = TRUE)
@@ -154,20 +162,163 @@ writeRaster(average_raster_units, output_file, format = "GTiff", overwrite = TRU
 
 
 
+
+CP_BNF <- rast(here(loc, "CABLE-POP/fBNF_annually.nc"))
+CLASSIC_BNF <- rast(here(loc,"CLASSIC/fNloss_annually.nc"))
+CLM5_BNF <- rast(here(loc,"CLM5.0/fNloss_annually.nc"))
+DLEM_BNF <- rast(here(loc,"DLEM/fNloss_annually.nc"))
+ISAM_BNF <- rast(here(loc,"ISAM/fNloss_annually.nc"))
+JSBACH_BNF <- rast(here(loc,"JSBACH/fNloss_annually.nc"))
+JULES_ES_BNF <- rast(here(loc,"JULES-ES/fNloss_annually.nc"))
+LPJ_GUESS_BNF <- rast(here(loc,"LPJ-GUESS/fNloss_annually.nc"))
+LPX_Bern_BNF <- rast(here(loc,"LPX-Bern/fNloss_annually.nc"))
+OCNv2_BNF <- rast(here(loc,"OCNv2/fNloss_annually.nc"))
+
+ORCHIDEEv3_BNF <- rast(here(loc,"ORCHIDEEv3/fNloss_annually.nc"))
+
+
+```{r}
+Classic_bnf_nc <- ncdf4::nc_open(here(loc, "CLASSIC/fBNF_annually.nc"))
+
+data_var <- ncvar_get(Classic_bnf_nc, "fBNF")
+time_var <- ncvar_get(Classic_bnf_nc, "time")
+
+lat <- ncvar_get(Classic_bnf_nc, "latitude")
+lon <- ncvar_get(Classic_bnf_nc, "longitude")
+
+nlat <- length(lat)
+nlon <- length(lon)
+ntime <- length(time_var)
+
+selected_time_steps <- c(150:170)
+
+rasters <- list()
+
+for (i in selected_time_steps) {
+  data_slice <- data_var[,,i]
+  r <- raster(t(data_slice), xmn=min(lon), xmx=max(lon), ymn=min(lat), ymx=max(lat), crs=CRS("+proj=longlat +datum=WGS84"))
+  rasters[[length(rasters) + 1]] <- r
+}
+
+raster_brick <- brick(rasters)
+
+average_raster <- calc(raster_brick, mean)
+
+
+
+
+average_raster <- flip(average_raster, direction = 'y')
+average_raster <- terra::rotate(average_raster)
+average_raster_units <- average_raster*(3.1104e+10)
+plot(average_raster_units)
+#average_raster
+
+values(average_raster_units)
+
+# Define the output file path
+output_file <- here(averages_loc,"Classic_bnf_Avg.tif")
+
+# Write the adjusted average raster to a GeoTIFF file
+writeRaster(average_raster_units, output_file, format = "GTiff", overwrite = TRUE)
+
+```
+
+##N loss
+
+
+```{r}
+#averages_loc_nloss <- here("Outputs", "AvgRasters", "Nloss")
+
+Classic_nloss_nc <- ncdf4::nc_open(here(loc, "ORCHIDEEv3/fNloss_annually.nc"))
+
+data_var <- ncvar_get(Classic_nloss_nc, "fNloss")
+time_var <- ncvar_get(Classic_nloss_nc, "time")
+
+lat <- ncvar_get(Classic_nloss_nc, "latitude")
+lon <- ncvar_get(Classic_nloss_nc, "longitude")
+
+nlat <- length(lat)
+nlon <- length(lon)
+ntime <- length(time_var)
+
+selected_time_steps <- c(150:170)
+
+rasters <- list()
+
+for (i in selected_time_steps) {
+  data_slice <- data_var[,,i]
+  r <- raster(t(data_slice), xmn=min(lon), xmx=max(lon), ymn=min(lat), ymx=max(lat), crs=CRS("+proj=longlat +datum=WGS84"))
+  rasters[[length(rasters) + 1]] <- r
+}
+
+raster_brick <- brick(rasters)
+
+average_raster <- calc(raster_brick, mean)
+
+
+
+
+average_raster <- flip(average_raster, direction = 'y')
+average_raster <- terra::rotate(average_raster)
+average_raster_units <- average_raster*(3.1104e+10)
+plot(average_raster_units)
+#average_raster
+
+values(average_raster_units)
+
+# Define the output file path
+output_file <- here(averages_loc_nloss,"ORCHIDEEv3_Nloss_Avg.tif")
+
+# Write the adjusted average raster to a GeoTIFF file
+writeRaster(average_raster_units, output_file, format = "GTiff", overwrite = TRUE)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ##All means and Variance Denit
+NOT WORKING
 ```{r}
 # Define the directory containing your raster files
-rasters_nloss <- here("Outputs", "AvgRasters", "Nloss")
+rasters_bnf <- here("Outputs", "AvgRasters", "BNF")
 
 # List all .tif files in the directory
-raster_files <- list.files(rasters_nloss, pattern = "\\.tif$", full.names = TRUE)
+raster_files <- list.files(rasters_bnf, pattern = "\\.tif$", full.names = TRUE)
 
 # Create a SpatRaster stack from the list of files
 raster_stack <- rast(raster_files)
 
 print(raster_stack)
+plot(raster_stack)
 
-#writeRaster(raster_stack, file = "Stack_TRENDYN_Nloss.tif", format = "GTiff", overwrite = TRUE)
+#values(raster_stack)
+
+#writeRaster(raster_stack, file = "Stack_TRENDYN_BNF.tif", format = "GTiff", overwrite = TRUE)
 
 # Calculate the variance of the raster stack
 #variance <- calc(raster_stack, var)
@@ -179,13 +330,136 @@ print(raster_stack)
 #writeRaster(variance, file = "Variance_TRENDYN_Nloss.tif", format = "GTiff", overwrite = TRUE)
 ```
 
+```{r}
+
+rasters_bnf <- here("Outputs", "AvgRasters", "BNF")
+raster_files <- c(
+  here(rasters_bnf, "Classic_bnf_Avg.tif"),
+  here(rasters_bnf, "Clm5_bnf_Avg.tif"),
+  here(rasters_bnf, "CP_bnf_Avg.tif"),
+  here(rasters_bnf, "Dlem_bnf_Avg.tif"),
+  here(rasters_bnf, "Isam_bnf_Avg.tif"),
+  here(rasters_bnf, "Jsbach_bnf_Avg.tif"),
+  here(rasters_bnf, "Jules_es_bnf_Avg.tif"),
+  here(rasters_bnf, "Lpj_guess_bnf_Avg.tif"),
+  here(rasters_bnf, "Lpx_bern_bnf_Avg.tif"),
+  here(rasters_bnf, "Ocnv2_bnf_Avg.tif"),
+  here(rasters_bnf, "Orchideev3_bnf_Avg.tif")
+)
 
 
+raster_stack <- rast(raster_files)
+
+print(raster_stack)
+plot(raster_stack)
+
+stack_variance <- app(raster_stack, fun = function(x) var(x, na.rm = TRUE))
+
+print(stack_variance)
+plot(stack_variance)
+
+# Define the output file path
+output_file <- here(averages_loc,"BNF_Variance.tif")
+# Write the adjusted average raster to a GeoTIFF file
+writeRaster(stack_variance, output_file, overwrite = TRUE)
+
+
+
+mean_raster <- app(raster_stack, fun = function(x) mean(x, na.rm = TRUE))
+print(mean_raster)
+plot(mean_raster)
+# Define the output file path
+output_file <- here(averages_loc,"BNF_mean.tif")
+# Write the adjusted average raster to a GeoTIFF file
+writeRaster(mean_raster, output_file, overwrite = TRUE)
+
+sd_raster <- app(raster_stack, fun = function(x) sd(x, na.rm = TRUE))
+print(sd_raster)
+plot(sd_raster)
+output_file <- here(averages_loc,"BNF_SD.tif")
+# Write the adjusted average raster to a GeoTIFF file
+writeRaster(sd_raster, output_file, overwrite = TRUE)
+
+cv_raster <- sd_raster / mean_raster
+print(cv_raster)
+plot(cv_raster)
+output_file <- here(averages_loc,"BNF_CV.tif")
+# Write the adjusted average raster to a GeoTIFF file
+writeRaster(cv_raster, output_file, overwrite = TRUE)
+```
+
+
+```{r}
+#averages_loc_nloss <- here("Outputs", "AvgRasters", "Nloss")
+raster_files <- c(
+  here(averages_loc_nloss, "Classic_Nloss_Avg.tif"),
+  here(averages_loc_nloss, "Clm5_Nloss_Avg.tif"),
+  here(averages_loc_nloss, "Dlem_Nloss_Avg.tif"),
+  here(averages_loc_nloss, "Isam_Nloss_Avg.tif"),
+  here(averages_loc_nloss, "Jsbach_Nloss_Avg.tif"),
+  here(averages_loc_nloss, "Jules_es_Nloss_Avg.tif"),
+  here(averages_loc_nloss, "Lpj_guess_Nloss_Avg.tif"),
+  here(averages_loc_nloss, "Lpx_bern_Nloss_Avg.tif"),
+  here(averages_loc_nloss, "OCNv2_Nloss_Avg.tif"),
+  here(averages_loc_nloss, "ORCHIDEEv3_Nloss_Avg.tif")
+)
+
+
+raster_stack <- rast(raster_files)
+
+print(raster_stack)
+plot(raster_stack)
+
+stack_variance <- app(raster_stack, fun = function(x) var(x, na.rm = TRUE))
+
+print(stack_variance)
+plot(stack_variance)
+
+# Define the output file path
+output_file <- here(averages_loc,"Nloss_Variance.tif")
+# Write the adjusted average raster to a GeoTIFF file
+writeRaster(stack_variance, output_file, overwrite = TRUE)
+
+
+
+mean_raster <- app(raster_stack, fun = function(x) mean(x, na.rm = TRUE))
+print(mean_raster)
+plot(mean_raster)
+# Define the output file path
+output_file <- here(averages_loc,"Nloss_mean.tif")
+# Write the adjusted average raster to a GeoTIFF file
+writeRaster(mean_raster, output_file, overwrite = TRUE)
+
+sd_raster <- app(raster_stack, fun = function(x) sd(x, na.rm = TRUE))
+print(sd_raster)
+plot(sd_raster)
+output_file <- here(averages_loc,"Nloss_SD.tif")
+# Write the adjusted average raster to a GeoTIFF file
+writeRaster(sd_raster, output_file, overwrite = TRUE)
+
+cv_raster <- sd_raster / mean_raster
+print(cv_raster)
+plot(cv_raster)
+output_file <- here(averages_loc,"Nloss_CV.tif")
+# Write the adjusted average raster to a GeoTIFF file
+writeRaster(cv_raster, output_file, overwrite = TRUE)
+```
+
+
+
+
+
+
+
+##########################################################################################################
+
+##THIS IS NOT WORKING FOR MYSTERY REASONS
 ```{r}
 
 
 # Convert the RasterStack to a SpatRaster
 spat_raster_stack <- rast(raster_stack)
+plot(spat_raster_stack)
 
 # Calculate the variance across the SpatRaster stack
 variance_raster <- app(spat_raster_stack, fun = function(x) var(x, na.rm = TRUE))
@@ -229,14 +503,17 @@ plot(sd_raster)
 ##Variance BNF
 ```{r}
 # Define the directory containing your raster files
-rasters_bnf <- here("Outputs", "AvgRasters", "BNF")
+rasters_nloss <- here("Outputs", "AvgRasters", "Nloss")
 
 # List all .tif files in the directory
-raster_files <- list.files(rasters_bnf, pattern = "\\.tif$", full.names = TRUE)
+raster_files <- list.files(rasters_nloss, pattern = "\\.tif$", full.names = TRUE)
 
 # Create a SpatRaster stack from the list of files
 raster_stack <- rast(raster_files)
 
+mean_raster <- app(raster_stack, fun = function(x) mean(x, na.rm = TRUE))
+
+plot(mean_raster)
 # Calculate the variance of the raster stack
 #variance <- calc(raster_stack, var)
 
@@ -282,7 +559,7 @@ writeRaster(cv_raster, output_file, overwrite = TRUE)
 plot(sd_raster)
 ```
 
-
+##########################################################################################################
 
 
 
@@ -295,23 +572,23 @@ plot(sd_raster)
 
 ```{r}
 bnf <- read.csv(here(data_loc,'BNF_TRENDYN.csv'), header= TRUE)
-bnf_no_NA <- bnf %>% drop_na(Var)
+bnf_no_NA <- bnf %>% drop_na(Variance)
 
 denit <- read.csv(here(data_loc,'Nloss_TRENDYN.csv'), header= TRUE)
-denit_no_NA <- denit %>% drop_na(Var)
+denit_no_NA <- denit %>% drop_na(Variance)
 ```
 
 ##BNF - Variance 
 
 ```{r}
 #model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
-var_bnf_global <- brick(here(outputs_loc, "Variance_TrendyN_BNF.tif"))
+var_bnf_global <- brick(here(averages_loc, "BNF_Variance.tif"))
 var_bnf_global_df <- as.data.frame(rasterToPoints(var_bnf_global,spatial = TRUE))
 ```
 
 ```{r}
 #model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
-var_bnf <- brick(here(outputs_loc, "Clipped_Variance_TrendyN_BNF.tif"))
+var_bnf <- brick(here(outputs_loc, "Tropics_BNF_Variance.tif"))
 var_bnf_df <- as.data.frame(rasterToPoints(var_bnf,spatial = TRUE))
 ```
 
@@ -331,7 +608,7 @@ color_palette <- c("BNF - Tropics" = "yellow", "BNF - Sampled points" = "red")
 # Create density plots using ggplot2 with specified x-axis extent, colors, and legend
 ggplot() +
   geom_density(data = var_bnf_df, aes(x = lyr.1, fill = "BNF - Tropics"), alpha = 0.5) +
-  geom_density(data = bnf_no_NA, aes(x = Var, fill = "BNF - Sampled points"), alpha = 0.5) +
+  geom_density(data = bnf_no_NA, aes(x = Variance, fill = "BNF - Sampled points"), alpha = 0.5) +
   labs(title = "Density Plot of BNF model variance - no Sahara", x = "g N M-2 yr -1", y = "Density") +
   theme_minimal() +
   xlim(x_axis_extent) +
@@ -350,7 +627,7 @@ color_palette <- c("BNF - Global" = "grey", "BNF - Tropics" = "yellow", "BNF - S
 ggplot() +
   geom_density(data = var_bnf_global_df, aes(x = lyr.1, fill = "BNF - Global"), alpha = 0.5) +
   geom_density(data = var_bnf_df, aes(x = lyr.1, fill = "BNF - Tropics"), alpha = 0.5) +
-  geom_density(data = bnf_no_NA, aes(x = Var, fill = "BNF - Sampled points"), alpha = 0.5) +
+  geom_density(data = bnf_no_NA, aes(x = Variance, fill = "BNF - Sampled points"), alpha = 0.5) +
   labs(title = "Density Plot of BNF model variance", x = "g N M-2 yr -1", y = "Density") +
   theme_minimal() +
   xlim(x_axis_extent) +
@@ -367,7 +644,7 @@ ggplot() +
 
 ```{r}
 #model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
-cv_bnf_global <- brick(here(outputs_loc, "CV_TRENDYN_BNF.tif"))
+cv_bnf_global <- brick(here(averages_loc, "BNF_CV.tif"))
 cv_bnf_global_df <- as.data.frame(rasterToPoints(cv_bnf_global,spatial = TRUE))
 ```
 
@@ -382,11 +659,11 @@ cv_bnf_global_df <- as.data.frame(rasterToPoints(cv_bnf_global,spatial = TRUE))
 x_axis_extent <- c(0,5)
 
 # Specify the colors for each dataset
-color_palette <- c("BNF - Tropics" = "yellow", "BNF - Sampled points" = "red")
+color_palette <- c("BNF - Global" = "yellow", "BNF - Sampled points" = "red")
 
 # Create density plots using ggplot2 with specified x-axis extent, colors, and legend
 ggplot() +
-  geom_density(data = cv_bnf_global_df, aes(x = lyr.1, fill = "BNF - Tropics"), alpha = 0.5) +
+  geom_density(data = cv_bnf_global_df, aes(x = lyr.1, fill = "BNF - Global"), alpha = 0.5) +
   geom_density(data = bnf_no_NA, aes(x = CV, fill = "BNF - Sampled points"), alpha = 0.5) +
   labs(title = "Density Plot of BNF model CV", x = "Coefficient of Variation", y = "Density") +
   theme_minimal() +
@@ -400,7 +677,7 @@ ggplot() +
 
 ```{r}
 #model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
-cv_bnf <- brick(here(outputs_loc,"CV_TRENDYN_BNF_NoSahara.tif"))
+cv_bnf <- brick(here(outputs_loc,"Tropics_BNF_CV.tif"))
 cv_bnf_df <- as.data.frame(rasterToPoints(cv_bnf,spatial = TRUE))
 ```
 
@@ -457,7 +734,7 @@ ggplot() +
 SD_TRENDYN_BNF.tif
 ```{r}
 #model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
-sd_bnf <- brick(here(outputs_loc,"SD_TRENDYN_BNF_NoSahara.tif"))
+sd_bnf <- brick(here(outputs_loc,"Tropics_BNF_SD.tif"))
 sd_bnf_df <- as.data.frame(rasterToPoints(sd_bnf,spatial = TRUE))
 ```
 
@@ -482,7 +759,7 @@ ggplot() +
 
 ```{r}
 #model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
-sd_bnf_global <- brick(here(outputs_loc,"SD_TRENDYN_BNF.tif"))
+sd_bnf_global <- brick(here(averages_loc,"BNF_SD.tif"))
 sd_bnf_global_df <- as.data.frame(rasterToPoints(sd_bnf_global,spatial = TRUE))
 ```
 
@@ -509,10 +786,9 @@ ggplot() +
 
 
 ##BNF TRENDY Mean
-****CLIP SAHARA and RUN
 ```{r}
 #model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
-mean_bnf <- brick(here(outputs_loc,"Mean_TRENDYN_BNF_NoSahara.tif"))
+mean_bnf <- brick(here(outputs_loc,"Tropics_BNF_Mean.tif"))
 mean_bnf_df <- as.data.frame(rasterToPoints(mean_bnf,spatial = TRUE))
 ```
 
@@ -576,7 +852,7 @@ ggplot() +
 
 ```{r}
 #model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
-Var_denit_global <- brick(here(outputs_loc,"Variance_TrendyN_Nloss.tif"))
+Var_denit_global <- brick(here(averages_loc,"Nloss_Variance.tif"))
 Var_denit_global_df <- as.data.frame(rasterToPoints(cv_denit_global,spatial = TRUE))
 ```
 
@@ -600,8 +876,8 @@ ggplot() +
 
 ```{r}
 #model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
-Var_denit <- brick(here(outputs_loc,"Clipped_Variance_TrendyN_Nloss.tif"))
-Var_denit_df <- as.data.frame(rasterToPoints(cv_denit_global,spatial = TRUE))
+Var_denit <- brick(here(outputs_loc,"Tropics_Nloss_Variance.tif"))
+Var_denit_df <- as.data.frame(rasterToPoints(Var_denit,spatial = TRUE))
 ```
 
 ```{r}
@@ -613,7 +889,7 @@ color_palette <- c("N loss - Tropics" = "yellow", "N loss - Sampled points" = "b
 # Create density plots using ggplot2 with specified x-axis extent, colors, and legend
 ggplot() +
   geom_density(data = Var_denit_df, aes(x = lyr.1, fill = "N loss - Tropics"), alpha = 0.5) +
-  geom_density(data = denit_no_NA, aes(x = Var, fill = "N loss - Sampled points"), alpha = 0.5) +
+  geom_density(data = denit_no_NA, aes(x = Variance, fill = "N loss - Sampled points"), alpha = 0.5) +
   labs(title = "Density Plot of N loss model variance - no Sahara", x = "g N m-2 yr -1", y = "Density") +
   theme_minimal() +
   xlim(x_axis_extent) +
@@ -645,7 +921,7 @@ ggplot() +
 
 ```{r}
 #model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
-cv_denit_global <- brick(here(outputs_loc,"CV_TRENDYN_Nloss.tif"))
+cv_denit_global <- brick(here(averages_loc,"Nloss_CV.tif"))
 cv_denit_global_df <- as.data.frame(rasterToPoints(cv_denit_global,spatial = TRUE))
 ```
 
@@ -679,7 +955,7 @@ ggplot() +
 
 ```{r}
 #model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
-cv_denit <- brick(here(outputs_loc,"CV_TRENDYN_Nloss_NoSahara.tif"))
+cv_denit <- brick(here(outputs_loc,"Tropics_Nloss_CV.tif"))
 cv_denit_df <- as.data.frame(rasterToPoints(cv_denit,spatial = TRUE))
 ```
 
@@ -735,7 +1011,7 @@ ggplot() +
 
 ```{r}
 #model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
-sd_denit <- brick(here(outputs_loc,"SD_TRENDYN_Nloss_NoSahara.tif"))
+sd_denit <- brick(here(outputs_loc,"Tropics_Nloss_SD.tif"))
 sd_denit_df <- as.data.frame(rasterToPoints(sd_denit,spatial = TRUE))
 ```
 
@@ -794,7 +1070,7 @@ ggplot() +
 
 ```{r}
 #model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
-mean_nloss <- brick(here(outputs_loc,"Mean_TRENDYN_Nloss_NoSahara.tif"))
+mean_nloss <- brick(here(outputs_loc,"Tropics_Nloss_Mean.tif"))
 mean_nloss_df <- as.data.frame(rasterToPoints(mean_nloss,spatial = TRUE))
 ```
 
@@ -842,6 +1118,211 @@ ggplot() +
 ```
 
 
+##EBF only 
+```{r}
+bnf <- read.csv(here(data_loc,'BNF_TRENDYN.csv'), header= TRUE)
+#bnf_no_NA <- bnf %>% drop_na(Var)
+bnf_ebf <- bnf[bnf$Biome_rough == 'EBF', ]
+
+denit <- read.csv(here(data_loc,'Nloss_TRENDYN.csv'), header= TRUE)
+#denit_no_NA <- denit %>% drop_na(Var)
+denit_ebf <- denit[denit$Biome_rough == 'EBF', ]
+```
+
+
+
+
+
+```{r}
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+cv_bnf_ebf <- brick(here(outputs_loc, "EBF_BNF_CV.tif"))
+cv_bnf_ebf_df <- as.data.frame(rasterToPoints(cv_bnf_ebf,spatial = TRUE))
+```
+
+```{r}
+# Assuming df1, df2, and df3 are your dataframes with the respective columns
+
+# Install and load necessary libraries if not already installed
+# install.packages("ggplot2")
+# library(ggplot2)
+
+# Set your desired x-axis extent
+x_axis_extent <- c(0,3)
+
+# Specify the colors for each dataset
+color_palette <- c("BNF - Tropics" = "grey","BNF - EBF" = "yellow", "BNF - Sampled points" = "red")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = cv_bnf_df, aes(x = lyr.1, fill = "BNF - Tropics"), alpha = 0.5) +
+  geom_density(data = cv_bnf_ebf_df, aes(x = lyr.1, fill = "BNF - EBF"), alpha = 0.5) +
+  geom_density(data = bnf_ebf, aes(x = CV, fill = "BNF - Sampled points"), alpha = 0.5) +
+  labs(title = "Density Plot of BNF model CV - Evergreen broadleaf forests", x = "Coefficient of variation", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
+```
+
+
+```{r}
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+cv_nloss_ebf <- brick(here(outputs_loc, "EBF_Nloss_CV.tif"))
+cv_nloss_ebf_df <- as.data.frame(rasterToPoints(cv_nloss_ebf,spatial = TRUE))
+```
+
+```{r}
+# Assuming df1, df2, and df3 are your dataframes with the respective columns
+
+# Install and load necessary libraries if not already installed
+# install.packages("ggplot2")
+# library(ggplot2)
+
+# Set your desired x-axis extent
+x_axis_extent <- c(0,3)
+
+# Specify the colors for each dataset
+color_palette <- c("N loss - Tropics" = "grey","N loss - EBF" = "yellow", "N loss - Sampled points" = "blue")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = cv_denit_df, aes(x = lyr.1, fill = "N loss - Tropics"), alpha = 0.5) +
+  geom_density(data = cv_nloss_ebf_df, aes(x = lyr.1, fill = "N loss - EBF"), alpha = 0.5) +
+  geom_density(data = denit_ebf, aes(x = CV, fill = "N loss - Sampled points"), alpha = 0.5) +
+  labs(title = "Density Plot of N loss model CV - Evergreen broadleaf forests", x = "Coefficient of variation", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
+```
+
+```{r}
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+sd_bnf_ebf <- brick(here(outputs_loc, "EBF_BNF_SD.tif"))
+sd_bnf_ebf_df <- as.data.frame(rasterToPoints(sd_bnf_ebf,spatial = TRUE))
+```
+
+```{r}
+
+x_axis_extent <- c(0,7.5)
+
+# Specify the colors for each dataset
+color_palette <- c("BNF - Tropics" = "grey","BNF - EBF" = "yellow", "BNF - Sampled points" = "red")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = sd_bnf_df, aes(x = lyr.1, fill = "BNF - Tropics"), alpha = 0.5) +
+  geom_density(data = sd_bnf_ebf_df, aes(x = lyr.1, fill = "BNF - EBF"), alpha = 0.5) +
+  geom_density(data = bnf_ebf, aes(x = SD, fill = "BNF - Sampled points"), alpha = 0.5) +
+  labs(title = "Density Plot of BNF model SD - Evergreen broadleaf forests", x = "Standard deviation", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
+```
+
+```{r}
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+sd_nloss_ebf <- brick(here(outputs_loc, "EBF_Nloss_CV.tif"))
+sd_nloss_ebf_df <- as.data.frame(rasterToPoints(sd_nloss_ebf,spatial = TRUE))
+```
+
+```{r}
+# Assuming df1, df2, and df3 are your dataframes with the respective columns
+
+# Install and load necessary libraries if not already installed
+# install.packages("ggplot2")
+# library(ggplot2)
+
+# Set your desired x-axis extent
+x_axis_extent <- c(0,5)
+
+# Specify the colors for each dataset
+color_palette <- c("N loss - Tropics" = "grey","N loss - EBF" = "yellow", "N loss - Sampled points" = "blue")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = sd_denit_df, aes(x = lyr.1, fill = "N loss - Tropics"), alpha = 0.5) +
+  geom_density(data = sd_nloss_ebf_df, aes(x = lyr.1, fill = "N loss - EBF"), alpha = 0.5) +
+  geom_density(data = denit_ebf, aes(x = SD, fill = "N loss - Sampled points"), alpha = 0.5) +
+  labs(title = "Density Plot of N loss model SD - Evergreen broadleaf forests", x = "Standard deviation", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
+```
+
+
+```{r}
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+mean_bnf_ebf <- brick(here(outputs_loc, "EBF_BNF_Mean.tif"))
+mean_bnf_ebf_df <- as.data.frame(rasterToPoints(mean_bnf_ebf,spatial = TRUE))
+```
+
+```{r}
+
+x_axis_extent <- c(0,7.5)
+
+# Specify the colors for each dataset
+color_palette <- c("BNF - Tropics" = "grey", "BNF - EBF" = "yellow", "BNF - Sampled points" = "red")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = mean_bnf_df, aes(x = lyr.1, fill = "BNF - Tropics"), alpha = 0.5) +
+  geom_density(data = mean_bnf_ebf_df, aes(x = lyr.1, fill = "BNF - EBF"), alpha = 0.5) +
+  geom_density(data = bnf_ebf, aes(x = Mean, fill = "BNF - Sampled points"), alpha = 0.5) +
+  labs(title = "Density Plot of BNF model Mean - Evergreen broadleaf forests", x = "Mean of all model BNF rates", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
+```
+
+
+```{r}
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+mean_nloss_ebf <- brick(here(outputs_loc, "EBF_BNF_Mean.tif"))
+mean_nloss_ebf_df <- as.data.frame(rasterToPoints(mean_nloss_ebf,spatial = TRUE))
+```
+
+```{r}
+
+x_axis_extent <- c(0,7.5)
+
+# Specify the colors for each dataset
+color_palette <- c("N loss - Tropics" = "grey", "N loss - EBF" = "yellow", "N loss - Sampled points" = "blue")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = mean_nloss_df, aes(x = lyr.1, fill = "N loss - Tropics"), alpha = 0.5) +
+  geom_density(data = mean_nloss_ebf_df, aes(x = lyr.1, fill = "N loss - EBF"), alpha = 0.5) +
+  geom_density(data = denit_ebf, aes(x = Mean, fill = "N loss - Sampled points"), alpha = 0.5) +
+  labs(title = "Density Plot of N loss model Mean - Evergreen broadleaf forests", x = "Mean of all model N loss rates", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -854,6 +1335,9 @@ ggplot() +
 ##GAM
 ```{r}
 library(mgcv)
+```
+```{r}
+s <- scale(bnf$Elevation, center=TRUE, scale = TRUE)
 ```
 
 

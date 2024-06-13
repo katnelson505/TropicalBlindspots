@@ -20,7 +20,8 @@ library(gstat)
 library(sp)
 library(ggplot2)
 library(dplyr)
-#library(caret)
+library(caret)
+library(leaps)
 #library(AppliedPredictiveModeling)
 library(scales)
 library(plotly)
@@ -568,9 +569,227 @@ rda <- rda(raster_data_noZeros$PresAbs ~ ., data = raster_data_noZeros)
 
 
 
-##GAM
 
-##Try and standardize to a range, look into gam assumptions!!
+
+
+
+
+##GAM
+```{r}
+df <- read.csv(here(pca_loc,'RandPoints_Ext.csv'), header= TRUE)
+df$Slope <- as.numeric(df$Slope)
+df <- df %>% dplyr::select(-c(NEE, IGBP, GPP, Elevation, Roughness, SoilpH, PPT))
+```
+
+
+
+```{r}
+#read in data and standardize variables 
+numeric_columns <- sapply(df, is.numeric)
+df[numeric_columns] <- scale(df[numeric_columns])
+```
+
+```{r}
+#attach them to the presence/absence classification
+gam_data <- read.csv(here(pca_loc,"RandPoints_Ext_all_GAM_loc.csv"), header = TRUE)
+gam_data <- merge(gam_data, df, by = 0)
+gam_data <- gam_data %>% dplyr::select(-c(Row.names))
+
+final_data <- gam_data
+```
+
+```{r}
+#remove NA rows 
+gam_data <- na.omit(gam_data)
+```
+
+```{r}
+hist(gam_data$PresAbs)
+```
+```{r}
+#try to downsample data 
+##Remove pres abs data rows first 
+# Specify the column and value to remove
+column_name <- "PresAbs"
+value_to_remove <- "1"
+
+# Separate the rows to be removed
+rows_to_remove <- gam_data[gam_data[[column_name]] == value_to_remove, ]
+
+# Data frame without the specified rows
+df_remaining <- gam_data[gam_data[[column_name]] != value_to_remove, ]
+```
+
+```{r}
+#actual downsample
+if (nrow(df_remaining) >= 10000) {
+  # Randomly sample 10,000 rows
+  sampled_df <- df_remaining[sample(nrow(df_remaining), 10000), ]
+} else {
+  stop("Not enough rows with the specified value to sample 10,000 rows.")
+}
+```
+
+```{r}
+#reattach 
+gam_data <- rbind(sampled_df, rows_to_remove)
+```
+
+##AET, Temp, N
+```{r}
+#try the Gam
+
+tmp_sdm<-gam(PresAbs~ SoilN+SoilOC+NPP+MAT+Slope+SoilP+DtB1+AET+SoilMoisture+Seasonality,family = binomial, data=gam_data, select = TRUE, method="GCV.Cp")
+#Then when you want to predict, you just:
+Gam_pred <- predict.gam(tmp_sdm, newdata=gam_data, type="response")
+Gam_pred <- as.data.frame(Gam_pred)
+#predictions for presence absence at each point based only on PPT and MAT
+
+```
+
+```{r}
+hist(Gam_pred$Gam_pred)
+```
+
+
+##trying a GAM with only theoretically important variables 
+```{r}
+#try the Gam
+
+tmp_small<-gam(PresAbs~ SoilN+MAT+AET,family = binomial, data=gam_data, select = TRUE, method="GCV.Cp")
+#Then when you want to predict, you just:
+Gam_pred_sm <- predict.gam(tmp_small, newdata=gam_data, type="response")
+Gam_pred_sm <- as.data.frame(Gam_pred_sm)
+#predictions for presence absence at each point based only on PPT and MAT
+
+```
+
+```{r}
+hist(Gam_pred_sm$Gam_pred)
+```
+
+```{r}
+summary(tmp_sdm)
+```
+
+#model only explains ~10% variation. 
+
+```{r}
+gam.check(tmp_sdm)
+```
+
+
+```{r}
+plot(tmp_sdm, shade = TRUE, pages = 1)
+```
+
+```{r}
+library(gam)
+stepwise_model <- step.gam(tmp_sdm)
+summary(stepwise_model)
+```
+
+
+
+
+
+#model comp
+# Fit alternative models
+gam_model_1 <- gam(response ~ s(predictor1) + s(predictor2), data = your_data)
+gam_model_2 <- gam(response ~ s(predictor1) + s(predictor3), data = your_data)
+
+# Compare models using AIC
+AIC(gam_model_1, gam_model_2)
+
+
+Cross-validation
+# Perform cross-validation
+library(caret)
+train_control <- trainControl(method = "cv", number = 10)
+cv_model <- train(response ~ ., data = your_data, method = "gam", trControl = train_control)
+print(cv_model)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##Attaching the GAM to locaitons
+```{r}
+gam_data <- merge(gam_data, Gam_pred, by = 0)
+gam_data <- gam_data %>% dplyr::select(-c(Row.names))
+```
+
+```{r}
+file_path <- here(pca_loc, "Gam_10000_output.csv")
+write.csv(gam_data, file = file_path, row.names = FALSE)
+```
+
+
+```{r}
+vgm.gam <- variogram(Gam_pred ~ 1, locations = ~Lat + Long, data = gam_data, boundaries = c(5, 10, 15, 20, 25, 30))
+vgm.gam
+plot(vgm.gam)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##Stepwise regression
+PresAbs~ SoilN+SoilOC+NPP+MAT+Slope+SoilP+DtB1+AET+SoilMoisture+Seasonality
+
+```{r}
+# Fit the full model 
+full.model <- lm(PresAbs ~SoilN+SoilOC+NPP+MAT+Slope+SoilP+DtB1+AET+SoilMoisture+Seasonality, data = gam_data)
+# Stepwise regression model
+step.model <- step(full.model, direction = "both")
+summary(step.model)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```{r}
 library(mgcv)
