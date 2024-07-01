@@ -34,7 +34,14 @@ library(tidyverse)
 library(hrbrthemes)
 library(terra)
 library(here)
+
+library(corrplot)
+library(factoextra) 
+library(FactoMineR)
+library(vegan)
+library(mgcv)
 ```
+
 
 ##Locations 
 ```{r}
@@ -195,12 +202,7 @@ for (col in 1:ncol(data)) {
 
 
 
-```{r}
-library(corrplot)
-library(factoextra) 
-library(FactoMineR)
-library(vegan)
-```
+
 
 
 
@@ -574,6 +576,16 @@ rda <- rda(raster_data_noZeros$PresAbs ~ ., data = raster_data_noZeros)
 
 
 
+
+
+
+
+
+
+
+
+
+
 ##GAM
 ```{r}
 df <- read.csv(here(pca_loc,'RandPoints_Ext.csv'), header= TRUE)
@@ -594,8 +606,6 @@ df[numeric_columns] <- scale(df[numeric_columns])
 gam_data <- read.csv(here(pca_loc,"RandPoints_Ext_all_GAM_loc.csv"), header = TRUE)
 gam_data <- merge(gam_data, df, by = 0)
 gam_data <- gam_data %>% dplyr::select(-c(Row.names))
-
-final_data <- gam_data
 ```
 
 ```{r}
@@ -635,11 +645,11 @@ if (nrow(df_remaining) >= 10000) {
 gam_data <- rbind(sampled_df, rows_to_remove)
 ```
 
-##AET, Temp, N
+Doing the GAM with 10,000 samples and considering potentially interesting variables: 
 ```{r}
 #try the Gam
 
-tmp_sdm<-gam(PresAbs~ SoilN+SoilOC+NPP+MAT+Slope+SoilP+DtB1+AET+SoilMoisture+Seasonality,family = binomial, data=gam_data, select = TRUE, method="GCV.Cp")
+tmp_sdm<-gam(PresAbs~ SoilN+SoilOC+NPP+MAT+Slope+SoilP+AET+SoilMoisture+Seasonality,family = binomial, data=gam_data, select = TRUE, method="GCV.Cp")
 #Then when you want to predict, you just:
 Gam_pred <- predict.gam(tmp_sdm, newdata=gam_data, type="response")
 Gam_pred <- as.data.frame(Gam_pred)
@@ -651,8 +661,13 @@ Gam_pred <- as.data.frame(Gam_pred)
 hist(Gam_pred$Gam_pred)
 ```
 
+```{r}
+summary(tmp_sdm)
+#already cross validated 
+```
 
-##trying a GAM with only theoretically important variables 
+
+##trying a GAM with only theoretically important variables: AET, Temp, N
 ```{r}
 #try the Gam
 
@@ -668,26 +683,56 @@ Gam_pred_sm <- as.data.frame(Gam_pred_sm)
 hist(Gam_pred_sm$Gam_pred)
 ```
 
+It's close to the same with only the three variables, though it doesn't explain as far. GAM with one at a time didn't work very well. 
+
+
 ```{r}
 summary(tmp_sdm)
 ```
 
-#model only explains ~10% variation. 
+The model only explains ~10% variation. Try to figure out what all the check components mean 
+
+```{r}
+summary(tmp_small)
+```
+
 
 ```{r}
 gam.check(tmp_sdm)
 ```
 
-
 ```{r}
-plot(tmp_sdm, shade = TRUE, pages = 1)
+gam.check(tmp_small)
 ```
 
+
+
+
+
 ```{r}
-library(gam)
-stepwise_model <- step.gam(tmp_sdm)
-summary(stepwise_model)
+#Cross-validation
+# Perform k-fold cross-validation
+#library(caret)
+gam_data$PresAbs <- as.factor(gam_data$PresAbs)
+train_control <- trainControl(method = "cv",
+                              number = 10)
+cv_model <- train(PresAbs ~ SoilN+SoilOC+NPP+MAT+Slope+SoilP+DtB1+AET+SoilMoisture+Seasonality, data = gam_data, method = "gam", trControl = train_control)
+print(cv_model)
 ```
+Accuracy indicates that the model did well to predict negative and positive values. Kapps indicates there is fair agreement, I think meaning that our model is 25% better than what would align only by chance. 
+
+
+```{r}
+#gam_data$PresAbs <- as.factor(gam_data$PresAbs)
+train_control <- trainControl(method = "cv",
+                              number = 10)
+cv_model <- train(PresAbs ~ SoilN+MAT+AET, data = gam_data, method = "gam", trControl = train_control)
+print(cv_model)
+```
+
+Accuracy indicates that the model did well to predict negative and positive values. Kappa indicates there is little agreement, meaning this model is not really better than random chance.
+
+
 
 
 
@@ -702,12 +747,176 @@ gam_model_2 <- gam(response ~ s(predictor1) + s(predictor3), data = your_data)
 AIC(gam_model_1, gam_model_2)
 
 
-Cross-validation
-# Perform cross-validation
-library(caret)
-train_control <- trainControl(method = "cv", number = 10)
-cv_model <- train(response ~ ., data = your_data, method = "gam", trControl = train_control)
+
+
+
+
+
+
+
+
+##GAM with only one at a time - prep
+
+```{r}
+df <- read.csv(here(pca_loc,'RandPoints_Ext.csv'), header= TRUE)
+df$Slope <- as.numeric(df$Slope)
+df <- df %>% dplyr::select(-c(NEE, IGBP, GPP, Elevation, Roughness, SoilpH, PPT))
+```
+
+
+```{r}
+#read in data and standardize variables 
+numeric_columns <- sapply(df, is.numeric)
+df[numeric_columns] <- scale(df[numeric_columns])
+```
+
+```{r}
+#attach them to the presence/absence classification
+gam_data <- read.csv(here(pca_loc,"RandPoints_Ext_all_GAM_loc.csv"), header = TRUE)
+gam_data <- merge(gam_data, df, by = 0)
+gam_data <- gam_data %>% dplyr::select(-c(Row.names))
+```
+
+```{r}
+#remove NA rows 
+gam_data <- na.omit(gam_data)
+```
+
+```{r}
+hist(gam_data$PresAbs)
+```
+
+
+```{r}
+#try to downsample data 
+##Remove pres abs data rows first 
+# Specify the column and value to remove
+column_name <- "Type"
+value_to_remove <- "Denit"
+
+# Separate the rows to be removed
+rows_to_remove <- gam_data[gam_data[[column_name]] == value_to_remove, ]
+
+# Data frame without the specified rows
+df_remaining <- gam_data[gam_data[[column_name]] != value_to_remove, ]
+```
+
+```{r}
+#actual downsample
+if (nrow(df_remaining) >= 10000) {
+  # Randomly sample 10,000 rows
+  sampled_df <- df_remaining[sample(nrow(df_remaining), 10000), ]
+} else {
+  stop("Not enough rows with the specified value to sample 10,000 rows.")
+}
+```
+
+```{r}
+#reattach 
+tropics_bnf <- rbind(sampled_df, rows_to_remove)
+```
+
+
+
+
+```{r}
+column_name <- "Type"
+value_to_remove <- "BNF"
+# Separate the rows to be removed
+rows_to_remove <- gam_data[gam_data[[column_name]] == value_to_remove, ]
+# Data frame without the specified rows
+df_remaining <- gam_data[gam_data[[column_name]] != value_to_remove, ]
+```
+
+
+```{r}
+#actual downsample
+if (nrow(df_remaining) >= 10000) {
+  # Randomly sample 10,000 rows
+  sampled_df <- df_remaining[sample(nrow(df_remaining), 10000), ]
+} else {
+  stop("Not enough rows with the specified value to sample 10,000 rows.")
+}
+```
+
+```{r}
+#reattach 
+tropics_nloss <- rbind(sampled_df, rows_to_remove)
+```
+
+
+
+
+
+
+##GAM with only BNF
+```{r}
+#try the Gam
+
+tmp_sdm<-gam(PresAbs~ SoilN+SoilOC+NPP+MAT+Slope+SoilP+DtB1+AET+SoilMoisture+Seasonality,family = binomial, data=tropics_bnf, select = TRUE, method="GCV.Cp")
+#Then when you want to predict, you just:
+Gam_pred <- predict.gam(tmp_sdm, newdata=gam_data, type="response")
+Gam_pred <- as.data.frame(Gam_pred)
+#predictions for presence absence at each point based only on PPT and MAT
+
+```
+
+```{r}
+hist(Gam_pred$Gam_pred)
+```
+
+```{r}
+#Cross-validation
+# Perform k-fold cross-validation
+#library(caret)
+tropics_bnf$PresAbs <- as.factor(tropics_bnf$PresAbs)
+train_control <- trainControl(method = "cv",
+                              number = 10)
+cv_model <- train(PresAbs ~ SoilN+SoilOC+NPP+MAT+Slope+SoilP+DtB1+AET+SoilMoisture+Seasonality, data = tropics_bnf, method = "gam", trControl = train_control)
 print(cv_model)
+```
+
+
+
+
+
+
+##GAM with only N loss
+
+```{r}
+#try the Gam
+
+tmp_sdm<-gam(PresAbs~ SoilN+SoilOC+NPP+MAT+Slope+SoilP+DtB1+AET+SoilMoisture+Seasonality,family = binomial, data=tropics_nloss, select = TRUE, method="GCV.Cp")
+#Then when you want to predict, you just:
+Gam_pred <- predict.gam(tmp_sdm, newdata=gam_data, type="response")
+Gam_pred <- as.data.frame(Gam_pred)
+#predictions for presence absence at each point based only on PPT and MAT
+
+```
+
+```{r}
+hist(Gam_pred$Gam_pred)
+```
+
+
+```{r}
+tropics_nloss$PresAbs <- as.factor(tropics_nloss$PresAbs)
+train_control <- trainControl(method = "cv",
+                              number = 10)
+cv_model <- train(PresAbs ~ SoilN+SoilOC+NPP+MAT+Slope+SoilP+DtB1+AET+SoilMoisture+Seasonality, data = tropics_nloss, method = "gam", trControl = train_control)
+print(cv_model)
+```
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -733,26 +942,6 @@ gam_data <- gam_data %>% dplyr::select(-c(Row.names))
 file_path <- here(pca_loc, "Gam_10000_output.csv")
 write.csv(gam_data, file = file_path, row.names = FALSE)
 ```
-
-
-```{r}
-vgm.gam <- variogram(Gam_pred ~ 1, locations = ~Lat + Long, data = gam_data, boundaries = c(5, 10, 15, 20, 25, 30))
-vgm.gam
-plot(vgm.gam)
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -791,63 +980,19 @@ summary(step.model)
 
 
 
-```{r}
-library(mgcv)
-gam_data <- read.csv(here(pca_loc,"RandPoints_Ext_all_GAM.csv"), header = TRUE)
-gam_data <- merge(gam_data, data, by = 0)
-gam_data <- gam_data %>% dplyr::select(-c(Row.names))
-
-tmp_sdm<-gam(PresAbs~ SoilN+SoilOC+NPP+MAT+Slope+SoilP+DtB1+AET+SoilMoisture,family = binomial, data=gam_data, select = TRUE, method="GCV.Cp")
-#Then when you want to predict, you just:
-Gam_pred <- predict.gam(tmp_sdm, newdata=data, type="response")
-Gam_pred <- as.data.frame(Gam_pred)
-#predictions for presence absence at each point based only on PPT and MAT
-```
-
-```{r}
-hist(Gam_pred$Gam_pred)
-```
 
 
 
 
-```{r}
-library(mgcv)
-gam_data <- read.csv(here(pca_loc,"RandPoints_Ext_all_GAM.csv"), header = TRUE)
-gam_data <- merge(gam_data, raster_data, by = 0)
-gam_data <- merge(gam_data, pc_scores, by = 0)
-gam_data <- gam_data %>% dplyr::select(-c(Row.names))
-colnames(gam_data)[which(names(gam_data) == "Dim.1")] <- "pc1"
-#If run with above, data is already normalized and standardized 
-
-```
 
 
-MAT+Slope+SoilP+DtB1
-PPT+AET+Seasonality+NPP+
-SoilOC+SoilN
-##GAM is overfitting when I add in AET 
-```{r}
-tmp_sdm<-gam(PresAbs~ SoilN+SoilOC+NPP+MAT+Slope+SoilP+DtB1,family = binomial, data=gam_data, select = TRUE, method="GCV.Cp")
-#Then when you want to predict, you just:
-Gam_pred <- predict.gam(tmp_sdm, newdata=data, type="response")
-Gam_pred <- as.data.frame(Gam_pred)
-#predictions for presence absence at each point based only on PPT and MAT
-```
 
-```{r}
-hist(Gam_pred$Gam_pred)
-```
 
-```{r}
-gam_loc <- merge(Gam_pred, data2, by = 0)
-gam_loc <- gam_loc %>% dplyr::select(c(Lat, Long, Gam_pred))
- gam_loc[gam_loc==0] <- NA
- gam_loc
- 
- gam_loc<-gam_loc[complete.cases(gam_loc),]
-#write.csv(gam_loc, file = "Gam_pred_noAET.csv")
-```
+
+
+
+
+
 
 
 ##rasterize PC scores? This didn't work I don't think... 

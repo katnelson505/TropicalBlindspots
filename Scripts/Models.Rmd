@@ -726,6 +726,17 @@ ggplot() +
 
 ```
 
+KS test: 
+```{r}
+ks_test_result <- ks.test(bnf$CV, cv_bnf_df$lyr.1)
+print(ks_test_result)
+
+#p-value < 0.05 indicates the distribution of these data are essentially the same
+```
+
+p-value < 0.05 indicates the distribution of these data are essentially the same
+
+
 
 
 
@@ -835,6 +846,12 @@ ggplot() +
   theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
 
 ```
+
+
+
+
+
+
 
 
 
@@ -983,6 +1000,15 @@ ggplot() +
   theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
 
 ```
+
+```{r}
+ks_test_result <- ks.test(denit$CV, cv_denit_df$lyr.1)
+print(ks_test_result)
+
+#p-value < 0.05 indicates the distribution of these data are essentially the same
+```
+
+
 
 ```{r}
 x_axis_extent <- c(0,3)
@@ -1225,6 +1251,15 @@ ggplot() +
 ```
 
 ```{r}
+ks_test_result <- ks.test(bnf_ebf$SD, sd_bnf_ebf_df$lyr.1)
+print(ks_test_result)
+
+#p-value < 0.05 indicates the distribution of these data are essentially the same
+```
+
+
+
+```{r}
 #model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
 sd_nloss_ebf <- brick(here(outputs_loc, "EBF_Nloss_CV.tif"))
 sd_nloss_ebf_df <- as.data.frame(rasterToPoints(sd_nloss_ebf,spatial = TRUE))
@@ -1312,58 +1347,298 @@ ggplot() +
 
 
 
+##Flux Towers
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-##GAM
 ```{r}
-library(mgcv)
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+cv_bnf <- brick(here(outputs_loc,"Tropics_BNF_CV.tif"))
+cv_bnf_df <- as.data.frame(rasterToPoints(cv_bnf,spatial = TRUE))
+
+cv_denit <- brick(here(outputs_loc,"Tropics_Nloss_CV.tif"))
+cv_denit_df <- as.data.frame(rasterToPoints(cv_denit,spatial = TRUE))
 ```
+
 ```{r}
-s <- scale(bnf$Elevation, center=TRUE, scale = TRUE)
+flux <- read.csv(here(data_loc,'FluxTowers_ModelCV.csv'), header= TRUE)
+flux_no_NA <- flux %>% drop_na(BNF_CV1)
 ```
 
 
 ```{r}
-rand <- read.csv(here(data_loc,'RandPoints_CV_TRENDY.csv'), header= TRUE)
+x_axis_extent <- c(0,3)
 
-rand_bnf <- rand %>% dplyr::select(-c(OID.., Lat, Long, Type, PPT, MAT, AET, IGBP, Seasonality, GPP, NPP, NEE, Ndep2050, Slope, Elevation, Roughness, SoilOC, SoilN, SoilP, SoilpH, DtB1, CV_Nloss1))
-rand_bnf <- rand_bnf %>% drop_na(CV_BNF1)
+# Specify the colors for each dataset
+color_palette <- c("BNF - Tropics" = "yellow", "BNF - Flux towers" = "purple")
 
-rand_Nloss <- rand %>% dplyr::select(-c(OID.., Lat, Long, Type, PPT, MAT, AET, IGBP, Seasonality, GPP, NPP, NEE, Ndep2050, Slope, Elevation, Roughness, SoilOC, SoilN, SoilP, SoilpH, DtB1, CV_BNF1))
-rand_Nloss <- rand_Nloss %>% drop_na(CV_Nloss1)
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = cv_bnf_df, aes(x = lyr.1, fill = "BNF - Tropics"), alpha = 0.5) +
+  geom_density(data = flux_no_NA, aes(x = BNF_CV1, fill = "BNF - Flux towers"), alpha = 0.5) +
+  labs(title = "Density Plot of BNF model CV and Flux tower CV for the Tropics", x = "Coefficient of Variation", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
 ```
 
 
-##GAM - BNF
 ```{r}
-tmp_sdm<-gam(PresAbs~ CV_BNF1,family = binomial, data=rand_bnf, select = TRUE, method="GCV.Cp")
-#Then when you want to predict, you just:
-Gam_pred <- predict.gam(tmp_sdm, newdata=data, type="response")
-Gam_pred <- as.data.frame(Gam_pred)
-#predictions for presence absence at each point based only on PPT and MAT
+x_axis_extent <- c(0,3)
+
+# Specify the colors for each dataset
+color_palette <- c("BNF - Tropics" = "yellow", "BNF - Flux towers" = "purple", "BNF - Sampled" = "red")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = cv_bnf_df, aes(x = lyr.1, fill = "BNF - Tropics"), alpha = 0.5) +
+  geom_density(data = flux_no_NA, aes(x = BNF_CV1, fill = "BNF - Flux towers"), alpha = 0.5) +
+  geom_density(data = bnf_no_NA, aes(x = CV, fill = "BNF - Sampled"), alpha = 0.5) +
+  labs(title = "Density Plot of BNF model CV and Flux tower CV for the Tropics", x = "Coefficient of Variation", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
+```
+
+
+```{r}
+# Set your desired x-axis extent
+x_axis_extent <- c(0,3)
+
+# Specify the colors for each dataset
+color_palette <- c("N loss - Tropics" = "yellow", "N loss - Flux towers" = "#009900")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = cv_denit_df, aes(x = lyr.1, fill = "N loss - Tropics"), alpha = 0.5) +
+  geom_density(data = flux_no_NA, aes(x = Nloss_CV1, fill = "N loss - Flux towers"), alpha = 0.5) +
+  labs(title = "Density Plot of model N loss CV and Flux tower CV for the Tropics", x = "Coefficient of Variation", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
 ```
 
 ```{r}
-hist(Gam_pred$Gam_pred)
+# Set your desired x-axis extent
+x_axis_extent <- c(0,3)
+
+# Specify the colors for each dataset
+color_palette <- c("N loss - Tropics" = "yellow", "N loss - Flux towers" = "#009900", "N loss - Sampled points" = "blue")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+ggplot() +
+  geom_density(data = cv_denit_df, aes(x = lyr.1, fill = "N loss - Tropics"), alpha = 0.5) +
+  geom_density(data = flux_no_NA, aes(x = Nloss_CV1, fill = "N loss - Flux towers"), alpha = 0.5) +
+  geom_density(data = denit_no_NA, aes(x = CV, fill = "N loss - Sampled points"), alpha = 0.5) + 
+  labs(title = "Density Plot of model N loss CV and Flux tower CV for the Tropics", x = "Coefficient of Variation", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(legend.position = c(0.83, 0.86))  # Adjust these values for the desired position
+
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##Bivariate range testing from models - CV and various drivers to look at the range of modeled vs sampled values in envr context 
+Try this for: 
+BNF - NPP, AET, PPT?
+N loss - MAT, Soil moisture, seasonality? 
+Look at the PCA to try for the best 
+
+```{r}
+#Read in rand points with CV extracted 
+df <- read.csv(here(data_loc,'RandPoints_CV_TRENDY.csv'), header= TRUE)
+tropics_cv <- df %>% drop_na(BNF_CV)
+```
+
+
+```{r}
+#BNF
+column_name <- "Type"
+value_to_remove <- "Denit"
+# Separate the rows to be removed
+rows_to_remove <- tropics_cv[tropics_cv[[column_name]] == value_to_remove, ]
+# Data frame without the specified rows
+tropics_bnf <- tropics_cv[tropics_cv[[column_name]] != value_to_remove, ]
+
+```
+
+```{r}
+column_name <- "Type"
+value_to_remove <- "BNF"
+# Separate the rows to be removed
+rows_to_remove <- tropics_cv[tropics_cv[[column_name]] == value_to_remove, ]
+# Data frame without the specified rows
+tropics_nloss <- tropics_cv[tropics_cv[[column_name]] != value_to_remove, ]
+```
+
+
+
+
+
+
+
+
+
+It will be modeled in grey showing CV and whatever envr variable
+BNF CV - NPP(x)
+```{r}
+cols <- c("#F72424", "#A0A0A050")
+ordered <- tropics_bnf[order(tropics_bnf$Type, decreasing = TRUE ), ]
+
+points <- ggplot(ordered, aes(x = NPP, y = BNF_CV, color = Type, order = Type)) +
+  geom_hline(yintercept = 0, linetype = "solid", size = 1, colour = "black") +  # Bold zero horizontal line
+  geom_vline(xintercept = 0, linetype = "solid", size = 1, colour = "black") +
+  geom_point() +
+  scale_color_manual(values = cols) + 
+  scale_x_discrete(breaks = pretty(ordered$NPP, n = 10)) +
+  theme_bw()+
+  xlab("NPP") + ylab("CV")
+   # Bold zero vertical line
+points
+
+#png("All_PCScores_2024-4-09.png", height = 8, width = 12, unit = "in", res = 800)
+#print(points)
+#dev.off()
+```
+
+BNF CV - AET(x)
+```{r}
+cols <- c("#F72424", "#A0A0A050")
+ordered <- tropics_bnf[order(tropics_bnf$Type, decreasing = TRUE ), ]
+
+points <- ggplot(ordered, aes(x = AET, y = BNF_CV, color = Type, order = Type)) +
+  geom_hline(yintercept = 0, linetype = "solid", size = 1, colour = "black") +  # Bold zero horizontal line
+  geom_vline(xintercept = 0, linetype = "solid", size = 1, colour = "black") +
+  geom_point() +
+  scale_color_manual(values = cols) + 
+  theme_bw()+
+  xlab("AET") + ylab("CV")
+   # Bold zero vertical line
+points
+
+#png("All_PCScores_2024-4-09.png", height = 8, width = 12, unit = "in", res = 800)
+#print(points)
+#dev.off()
+```
+
+BNF CV - PPT(x)
+```{r}
+cols <- c("#F72424", "#A0A0A050")
+ordered <- tropics_bnf[order(tropics_bnf$Type, decreasing = TRUE ), ]
+
+points <- ggplot(ordered, aes(x = PPT, y = BNF_CV, color = Type, order = Type)) +
+  geom_hline(yintercept = 0, linetype = "solid", size = 1, colour = "black") +  # Bold zero horizontal line
+  geom_vline(xintercept = 0, linetype = "solid", size = 1, colour = "black") +
+  geom_point() +
+  scale_color_manual(values = cols) + 
+  theme_bw()+
+  xlab("PPT") + ylab("CV")
+   # Bold zero vertical line
+points
+
+#png("All_PCScores_2024-4-09.png", height = 8, width = 12, unit = "in", res = 800)
+#print(points)
+#dev.off()
+```
+
+
+
+N loss - MAT, Soil moisture, seasonality? 
+
+
+Nloss CV - MAT(x)
+```{r}
+cols <- c("#0000FF", "#A0A0A050")
+ordered <- tropics_nloss[order(tropics_nloss$Type, decreasing = TRUE ), ]
+
+points <- ggplot(ordered, aes(x = MAT, y = Nloss_CV, color = Type, order = Type)) +
+  geom_hline(yintercept = 0, linetype = "solid", size = 1, colour = "black") +  # Bold zero horizontal line
+  geom_vline(xintercept = 0, linetype = "solid", size = 1, colour = "black") +
+  geom_point() +
+  scale_color_manual(values = cols) + 
+  theme_bw()+
+  xlab("MAT") + ylab("CV")
+   # Bold zero vertical line
+points
+
+#png("All_PCScores_2024-4-09.png", height = 8, width = 12, unit = "in", res = 800)
+#print(points)
+#dev.off()
+```
+
+Nloss CV - Soil Moisture(x)
+```{r}
+cols <- c("#0000FF", "#A0A0A050")
+ordered <- tropics_nloss[order(tropics_nloss$Type, decreasing = TRUE ), ]
+
+points <- ggplot(ordered, aes(x = SoilMoisture, y = Nloss_CV, color = Type, order = Type)) +
+  geom_hline(yintercept = 0, linetype = "solid", size = 1, colour = "black") +  # Bold zero horizontal line
+  geom_vline(xintercept = 0, linetype = "solid", size = 1, colour = "black") +
+  geom_point() +
+  scale_color_manual(values = cols) + 
+  theme_bw()+
+  xlab("Soil Moisture") + ylab("CV")
+   # Bold zero vertical line
+points
+
+#png("All_PCScores_2024-4-09.png", height = 8, width = 12, unit = "in", res = 800)
+#print(points)
+#dev.off()
+```
+
+
+Nloss CV - Seasonality(x)
+```{r}
+tropics_nloss$Seasonality <- as.numeric(tropics_nloss$Seasonality)
+
+cols <- c("#0000FF", "#A0A0A050")
+ordered <- tropics_nloss[order(tropics_nloss$Type, decreasing = TRUE ), ]
+
+points <- ggplot(ordered, aes(x = Seasonality, y = Nloss_CV, color = Type, order = Type)) +
+  geom_hline(yintercept = 0, linetype = "solid", size = 1, colour = "black") +  # Bold zero horizontal line
+  geom_vline(xintercept = 0, linetype = "solid", size = 1, colour = "black") +
+  geom_point() +
+  scale_color_manual(values = cols) + 
+  theme_bw()+
+  xlab("Seasonality") + ylab("CV")
+   # Bold zero vertical line
+points
+
+#png("All_PCScores_2024-4-09.png", height = 8, width = 12, unit = "in", res = 800)
+#print(points)
+#dev.off()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
