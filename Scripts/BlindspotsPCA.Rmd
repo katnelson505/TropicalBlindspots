@@ -276,9 +276,9 @@ raster.pca.plot
 
 # export plot to output folder
 
-#png("All_PCA_2024-4-09.png", height = 8, width = 12, unit = "in", res = 800)
-#print(raster.pca.plot)
-#dev.off()
+png("All_PCA_2024-4-09.png", height = 8, width = 12, unit = "in", res = 800)
+print(raster.pca.plot)
+dev.off()
 ```
 
 ```{r}
@@ -347,6 +347,11 @@ with_loc <- merge(data2, pc_scores, by = 0)
 ```
 
 ```{r}
+with_loc <- subset(with_loc, Dim.2 < 20, select = Row.names:Dim.5)
+```
+
+
+```{r}
 cols <- c("#F72424", "#0000FF", "#A0A0A050")
 ordered <- with_loc[order(with_loc$Type, decreasing = TRUE), ]
 
@@ -360,7 +365,7 @@ points <- ggplot(ordered, aes(x = Dim.1, y = Dim.2, color = Type, order = Type))
    # Bold zero vertical line
 points
 
-#png("All_PCScores_2024-4-09.png", height = 8, width = 12, unit = "in", res = 800)
+#png("PC_Scores_PointsOver_Cropped.png", height = 8, width = 12, unit = "in", res = 800)
 #print(points)
 #dev.off()
 ```

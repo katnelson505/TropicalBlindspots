@@ -614,12 +614,13 @@ ggplot() +
 
 ##Categorical variables 
 ```{r}
-igbp <- read.csv(file = "IGBP/AreasIGBP.csv", header = TRUE)
+data_loc <- here("Data")
+igbp <- read.csv(here(data_loc, 'AreasIGBP.csv'), header = TRUE)
 ```
 
 ```{r}
-igbp_fine <- read.csv(file = "IGBP/IGBP_Plotting_fine.csv", header = TRUE)
-igbp_rough <- read.csv(file = "IGBP/IGBP_Plotting_rough.csv", header = TRUE)
+igbp_fine <- read.csv(here(data_loc,"IGBP_Plotting_fine.csv"), header = TRUE)
+#igbp_rough <- read.csv(file = "IGBP/IGBP_Plotting_rough.csv", header = TRUE)
 
 igbp.sm <- read.csv(file = "IGBP/AreasIGBP_smaller.csv", header = TRUE)
 ```
@@ -751,7 +752,7 @@ p
 colors <- c("grey", "red", "blue")  # Replace with your desired colors
 
 # Define the order of categorical variables
-custom_order <- c("ENF", "EBF", "DNF", "DBF", "Mixed Forests", "Savannas", "Grassland", "Permanent Wetlands", "Barren")  # Replace with your desired order
+custom_order <- c( "EBF", "DBF", "Mixed Forests", "Savannas", "Grassland", "Permanent Wetlands", "Barren")  # Replace with your desired order
 
 # Create a grouped bar plot using specific columns as y-values
 p <- plot_ly(igbp_rough, x = ~Biome_rough, type = NULL, marker = list(opacity = 0.7)) %>%
@@ -770,8 +771,8 @@ p
 
 
 ```{r}
-igbp_fine_sample <- read.csv(file = "IGBP_Fine_SamplingDensity.csv", header = TRUE)
-igbp_rough_sample <- read.csv(file = "IGBP_rough_SamplingDensity.csv", header = TRUE)
+igbp_fine_sample <- read.csv(here(data_loc, "IGBP_Fine_SamplingDensity.csv"), header = TRUE)
+igbp_rough_sample <- read.csv(here(data_loc, "IGBP_rough_SamplingDensity.csv"), header = TRUE)
 ```
 
 
@@ -796,10 +797,11 @@ p
 ```
 
 ```{r}
+
 colors <- c("grey", "red", "blue")  # Replace with your desired colors
 
 # Define the order of categorical variables
-custom_order <- c("ENF", "EBF", "DNF", "DBF", "Mixed Forests", "Savannas", "Grassland", "Permanent Wetlands", "Barren")  # Replace with your desired order
+custom_order <- c( "EBF", "DBF", "Mixed Forests", "Savannas", "Grassland", "Permanent Wetlands", "Barren")  # Replace with your desired order
 igbp_fine_sample$SampleRate_BNF_sites
 # Create a grouped bar plot using specific columns as y-values
 p <- plot_ly(igbp_rough_sample, x = ~Biome_rough, type = NULL, marker = list(opacity = 0.7)) %>%
@@ -810,6 +812,41 @@ p <- plot_ly(igbp_rough_sample, x = ~Biome_rough, type = NULL, marker = list(opa
          yaxis = list(title = "Percent difference (%)"),
          barmode = "group",
          legend = list(x = 0.9, y = 0.9))
+
+# Print the updated plot
+p
+
+
+
+
+# Add annotations for the percentages
+annotations <- list()
+for (i in 1:nrow(igbp_rough_sample)) {
+  # Determine the highest absolute value between the two bars for y position
+  max_val <- max(abs(igbp_rough_sample$SampleRate_BNF_sites[i]), abs(igbp_rough_sample$SampleRate_denit_sites[i]))
+  # Determine y position and anchor based on the sign of the value
+  if (max_val == abs(igbp_rough_sample$SampleRate_BNF_sites[i])) {
+    y_pos <- ifelse(igbp_rough_sample$SampleRate_BNF_sites[i] > 0, igbp_rough_sample$SampleRate_BNF_sites[i] + 3, igbp_rough_sample$SampleRate_BNF_sites[i] - 3)
+    y_anchor <- ifelse(igbp_rough_sample$SampleRate_BNF_sites[i] > 0, 'bottom', 'top')
+  } else {
+    y_pos <- ifelse(igbp_rough_sample$SampleRate_denit_sites[i] > 0, igbp_rough_sample$SampleRate_denit_sites[i] + 3, igbp_rough_sample$SampleRate_denit_sites[i] - 3)
+    y_anchor <- ifelse(igbp_rough_sample$SampleRate_denit_sites[i] > 0, 'bottom', 'top')
+  }
+  
+  annotations <- c(annotations, list(
+    list(
+      x = igbp_rough_sample$Biome_rough[i],
+      y = y_pos,
+      text = paste0(igbp_rough_sample$Percent_rough_total[i], "%"),
+      showarrow = FALSE,
+      xanchor = 'center',
+      yanchor = y_anchor
+    )
+  ))
+}
+
+# Add annotations to the plot
+p <- layout(p, annotations = annotations)
 
 # Print the updated plot
 p

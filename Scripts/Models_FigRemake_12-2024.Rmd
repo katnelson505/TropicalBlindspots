@@ -1,0 +1,338 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(lattice)
+library(gstat)
+library(sp)
+library(ggplot2)
+library(scales)
+library(plotly)
+library(raster)
+library(dismo)
+library(sf)
+library(tidyverse)
+library(hrbrthemes)
+library(terra)
+library(RColorBrewer)
+#netCDF packages
+library(ncdf4)
+library(CFtime)
+library(stars)
+library(here)
+```
+
+##Locations 
+```{r}
+data_loc <- here("Data")
+pca_loc <- here("Data", "PCA")
+outputs_loc <- here("Outputs")
+averages_loc <- here("Outputs", "AvgRasters")
+```
+
+
+##PLotting density curves with TRENDY data
+```{r}
+bnf <- read.csv(here(data_loc,'BNF_TRENDYN.csv'), header= TRUE)
+bnf_no_NA <- bnf %>% drop_na(Variance)
+
+denit <- read.csv(here(data_loc,'Nloss_TRENDYN.csv'), header= TRUE)
+denit_no_NA <- denit %>% drop_na(Variance)
+```
+
+
+#BNF Density curves - CV
+```{r}
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+cv_bnf <- brick(here(outputs_loc,"Tropics_BNF_CV.tif"))
+cv_bnf_df <- as.data.frame(rasterToPoints(cv_bnf,spatial = TRUE))
+```
+
+```{r}
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+cv_bnf_global <- brick(here(averages_loc, "BNF_CV.tif"))
+cv_bnf_global_df <- as.data.frame(rasterToPoints(cv_bnf_global,spatial = TRUE))
+```
+
+```{r}
+# Assuming df1, df2, and df3 are your dataframes with the respective columns
+
+# Install and load necessary libraries if not already installed
+# install.packages("ggplot2")
+# library(ggplot2)
+
+# Set your desired x-axis extent
+x_axis_extent <- c(0,3)
+
+# Specify the colors for each dataset
+color_palette <- c("BNF - Tropics" = "grey", "BNF - Sampled points" = "red")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+p <-ggplot() +
+  geom_density(data = cv_bnf_df, aes(x = lyr.1, fill = "BNF - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf_no_NA, aes(x = CV, fill = "BNF - Sampled points"), alpha = 0.5) +
+  labs(title = " ", x = "Coefficient of Variation", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+  theme(
+    legend.position = c(0.83, 0.86), # Adjust legend position
+    axis.title = element_text(size = 16), # Adjust font size for axis titles
+    axis.text = element_text(size = 14)   # Adjust font size for axis text
+  )
+p
+ggsave("CV_BNF_Clean.png", plot = p, width = 8, height = 6, dpi = 300)
+```
+
+
+
+
+#Denit Density curves - CV
+```{r}
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+cv_denit <- brick(here(outputs_loc,"Tropics_Nloss_CV.tif"))
+cv_denit_df <- as.data.frame(rasterToPoints(cv_denit,spatial = TRUE))
+```
+
+```{r}
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+cv_denit_global <- brick(here(averages_loc,"Nloss_CV.tif"))
+cv_denit_global_df <- as.data.frame(rasterToPoints(cv_denit_global,spatial = TRUE))
+```
+
+```{r}
+# Assuming df1, df2, and df3 are your dataframes with the respective columns
+
+# Install and load necessary libraries if not already installed
+# install.packages("ggplot2")
+# library(ggplot2)
+
+# Set your desired x-axis extent
+x_axis_extent <- c(0,3)
+
+# Specify the colors for each dataset
+color_palette <- c("N loss - Tropics" = "grey", "Denit - Sampled points" = "blue")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+p <- ggplot() +
+  geom_density(data = cv_denit_global_df, aes(x = lyr.1, fill = "N loss - Tropics"), alpha = 0.5) +
+  geom_density(data = denit_no_NA, aes(x = CV, fill = "Denit - Sampled points"), alpha = 0.5) +
+  labs(title = " ", x = "Coefficient of Variation", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+   theme(
+    legend.position = c(0.83, 0.86), # Adjust legend position
+    axis.title = element_text(size = 16), # Adjust font size for axis titles
+    axis.text = element_text(size = 14)   # Adjust font size for axis text
+  )
+p
+ggsave("CV_NLoss_Clean.png", plot = p, width = 8, height = 6, dpi = 300)
+```
+
+
+
+##BNF TRENDY Mean
+```{r}
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+mean_bnf <- brick(here(outputs_loc,"Tropics_BNF_Mean.tif"))
+mean_bnf_df <- as.data.frame(rasterToPoints(mean_bnf,spatial = TRUE))
+```
+
+```{r}
+x_axis_extent <- c(0,7.5)
+
+# Specify the colors for each dataset
+color_palette <- c("BNF - Tropics" = "grey", "BNF - Sampled points" = "red")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+p <- ggplot() +
+  geom_density(data = mean_bnf_df, aes(x = lyr.1, fill = "BNF - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf_no_NA, aes(x = Mean, fill = "BNF - Sampled points"), alpha = 0.5) +
+  labs( x = "Mean all models", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+   theme(
+    legend.position = c(0.83, 0.86), # Adjust legend position
+    axis.title = element_text(size = 16), # Adjust font size for axis titles
+    axis.text = element_text(size = 14)   # Adjust font size for axis text
+  )
+p
+ggsave("Mean_BNF_Clean.png", plot = p, width = 8, height = 6, dpi = 300)
+```
+
+
+##N loss TRENDY Mean
+
+```{r}
+#model_bnf <- raster(x = "CV_TRENDYN_BNF.tif")
+mean_nloss <- brick(here(outputs_loc,"Tropics_Nloss_Mean.tif"))
+mean_nloss_df <- as.data.frame(rasterToPoints(mean_nloss,spatial = TRUE))
+```
+
+```{r}
+x_axis_extent <- c(0,7.5)
+
+# Specify the colors for each dataset
+color_palette <- c("N loss - Tropics" = "grey", "N loss - Sampled points" = "blue")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+p <- ggplot() +
+  geom_density(data = mean_nloss_df, aes(x = lyr.1, fill = "N loss - Tropics"), alpha = 0.5) +
+  geom_density(data = denit_no_NA, aes(x = Mean, fill = "N loss - Sampled points"), alpha = 0.5) +
+  labs( x = "Mean all models", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+   theme(
+    legend.position = c(0.83, 0.86), # Adjust legend position
+    axis.title = element_text(size = 16), # Adjust font size for axis titles
+    axis.text = element_text(size = 14)   # Adjust font size for axis text
+  )
+p
+ggsave("Mean_NLoss_Clean.png", plot = p, width = 8, height = 6, dpi = 300)
+```
+
+##Flux towers
+```{r}
+flux <- read.csv(here(data_loc,'FluxTowers_ModelCV.csv'), header= TRUE)
+flux_no_NA <- flux %>% drop_na(BNF_CV1)
+```
+
+```{r}
+x_axis_extent <- c(0,3)
+
+# Specify the colors for each dataset
+color_palette <- c("BNF - Tropics" = "grey", "BNF - Flux towers" = "red")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+p <- ggplot() +
+  geom_density(data = cv_bnf_df, aes(x = lyr.1, fill = "BNF - Tropics"), alpha = 0.5) +
+  geom_density(data = flux_no_NA, aes(x = BNF_CV1, fill = "BNF - Flux towers"), alpha = 0.5) +
+  labs( x = "Coefficient of Variation", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+   theme(
+    legend.position = c(0.83, 0.86), # Adjust legend position
+    axis.title = element_text(size = 16), # Adjust font size for axis titles
+    axis.text = element_text(size = 14)   # Adjust font size for axis text
+  )
+p
+ggsave("CV_FluxTower_BNF_Clean.png", plot = p, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+# Set your desired x-axis extent
+x_axis_extent <- c(0,3)
+
+# Specify the colors for each dataset
+color_palette <- c("N loss - Tropics" = "grey", "N loss - Flux towers" = "blue")
+
+# Create density plots using ggplot2 with specified x-axis extent, colors, and legend
+p <- ggplot() +
+  geom_density(data = cv_denit_df, aes(x = lyr.1, fill = "N loss - Tropics"), alpha = 0.5) +
+  geom_density(data = flux_no_NA, aes(x = Nloss_CV1, fill = "N loss - Flux towers"), alpha = 0.5) +
+  labs(x = "Coefficient of Variation", y = "Density") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +  # Set legend name and colors
+   theme(
+    legend.position = c(0.83, 0.86), # Adjust legend position
+    axis.title = element_text(size = 16), # Adjust font size for axis titles
+    axis.text = element_text(size = 14)   # Adjust font size for axis text
+  )
+p
+ggsave("CV_FluxTower_NLoss_Clean.png", plot = p, width = 8, height = 6, dpi = 300)
+```
+
+
+##Bar chart 
+
+```{r}
+#igbp_fine_sample <- read.csv(file = "IGBP_Fine_SamplingDensity.csv", header = TRUE)
+igbp_rough_sample <- read.csv(here(data_loc, 'IGBP_rough_SamplingDensity.csv'), header = TRUE)
+```
+
+
+
+```{r}
+colors <- c("grey", "red", "blue")  # Replace with your desired colors
+
+# Define the order of categorical variables
+custom_order <- c("ENF", "EBF", "DNF", "DBF", "Mixed Forests", "Savannas", "Grassland", "Permanent Wetlands", "Barren")  # Replace with your desired order
+igbp_rough_sample$SampleRate_BNF_sites
+# Create a grouped bar plot using specific columns as y-values
+p <- plot_ly(igbp_rough_sample, x = ~Biome_rough, type = NULL, marker = list(opacity = 0.7)) %>%
+  add_trace(y = ~SampleRate_BNF_measurements, name = "BNF", type = "bar", marker = list(color = colors[2])) %>%
+  add_trace(y = ~SampleRate_denit_measurements, name = "Denitrification", type = "bar", marker = list(color = colors[3])) %>%
+  layout(title = "IGBP Coarse-Scale Land Cover Difference",
+         xaxis = list(title = "Biome", categoryorder = "array", categoryarray = custom_order),
+         yaxis = list(title = "Percent difference (%)"),
+         barmode = "group",
+         legend = list(x = 0.9, y = 0.9))
+
+# Print the updated plot
+p
+```
+
+```{r}
+label_mapping <- c("EBF" = "Evergreen Broadleaf Forest",
+                   "DBF" = "Deciduous Broadleaf Forest",
+                   "Mixed Forests" = "Mixed Forests",
+                   "Savannas" = "Savannas",
+                   "Grassland" = "Grassland",
+                   "Permanent Wetlands" = "Permanent Wetlands",
+                   "Barren" = "Barren")
+igbp_rough_sample$CustomLabels <- label_mapping[igbp_rough_sample$Biome_rough]
+
+p <- plot_ly(igbp_rough_sample, x = ~CustomLabels, type = NULL, marker = list(opacity = 0.7)) %>%
+  add_trace(y = ~SampleRate_BNF_sites, name = "BNF", type = "bar", marker = list(color = colors[2])) %>%
+  add_trace(y = ~SampleRate_denit_sites, name = "Denitrification", type = "bar", marker = list(color = colors[3])) %>%
+  layout(title = " ",
+         xaxis = list(title = " ", categoryorder = "array", categoryarray = unique(igbp_rough_sample$CustomLabels), tickangle = 30),
+         yaxis = list(title = " "),
+         barmode = "group",
+         legend = list(x = 0.9, y = 0.9))
+p
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
