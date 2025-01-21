@@ -5,6 +5,8 @@
 .DS_Store
 
 *.qmd
+*.png
+*.pdf
 
 Scripts/TRENDYN/zonalMeanEnsemble.R
 Scripts/TRENDYN/zonalMeanEnsemble_nosave.R
