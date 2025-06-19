@@ -1,0 +1,2819 @@
+---
+title: "DensityCurves"
+output: html_document
+date: "2025-05-29"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##MAT - no sahara 
+```{r}
+MAT <- raster(here(rast_loc,'MAT_NoSahara.tif'))
+
+# plot raster data
+plot(MAT,
+     main = "MAT")
+```
+
+Convert raster values to data frame
+```{r}
+MAT <- brick(here(rast_loc,'MAT_NoSahara.tif'))
+```
+
+```{r}
+MAT_df <- as.data.frame(rasterToPoints(MAT,spatial = TRUE))
+head(MAT_df)
+hist(MAT_df$MAT_NoSahara)
+```
+
+
+```{r}
+# --- 1. Calculate modes (peak positions) for each group ---
+# Remove NAs if needed
+mode_tropics <- density(na.omit(MAT_df$MAT_NoSahara))$x[which.max(density(na.omit(MAT_df$MAT_NoSahara))$y)]
+mode_bnf     <- density(na.omit(bnf$mat_Terraclimate_2000_2020_EX))$x[which.max(density(na.omit(bnf$mat_Terraclimate_2000_2020_EX))$y)]
+mode_denit   <- density(na.omit(denit$Extracted_Terraclimate_mat_2000_2020))$x[which.max(density(na.omit(denit$Extracted_Terraclimate_mat_2000_2020))$y)]
+
+# --- 2. Set axis limits and color palette ---
+x_axis_extent <- c(0, 32)
+
+color_palette <- c(
+  "MAT - Tropics" = "grey",
+  "MAT - Fixation points" = "red",
+  "MAT - Denitrification points" = "blue"
+)
+
+# --- 3. Create the plot with density curves and vertical dashed lines ---
+p <- ggplot() +
+  geom_density(data = MAT_df, aes(x = MAT_NoSahara, fill = "MAT - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf, aes(x = mat_Terraclimate_2000_2020_EX, fill = "MAT - Fixation points"), alpha = 0.5) +
+  geom_density(data = denit, aes(x = Extracted_Terraclimate_mat_2000_2020, fill = "MAT - Denitrification points"), alpha = 0.5) +
+  
+  # Add vertical dashed lines at density peaks (modes)
+  geom_vline(xintercept = mode_tropics, linetype = "dashed", color = color_palette["MAT - Tropics"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_bnf,     linetype = "dashed", color = color_palette["MAT - Fixation points"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_denit,   linetype = "dashed", color = color_palette["MAT - Denitrification points"], linewidth = 0.75) +
+
+  # Labels, theme, and scale adjustments
+  labs(title = " ", x = "MAT (°C)", y = " ") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +
+  theme(
+    legend.position = c(0.23, 0.89),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14)
+  )
+
+# Show plot
+p
+ggsave(here(figure_loc, "MAT_NoSahara_Density.png"), plot = p, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+cat("Mode of MAT - Tropics: ", round(mode_tropics, 2), "°C\n")
+cat("Mode of MAT - Fixation points: ", round(mode_bnf, 2), "°C\n")
+cat("Mode of MAT - Denitrification points: ", round(mode_denit, 2), "°C\n")
+```
+
+
+
+##Density curve offset 
+BNF - Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- bnf$mat_Terraclimate_2000_2020_EX
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- MAT$Terraclimate_mat_2000_2020_Clipped
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 40, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 40, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units \n")
+```
+
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 1400, length.out = 512)
+
+
+# Kernel density estimates
+pop_density <- density(MAT_df$Terraclimate_mat_2000_2020_Clipped, from = 0, to = 40, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 40, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units\n")
+```
+
+Negative offset means the second whole curve is offset to the left, positive is to the right 
+
+
+
+
+Denit: Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- denit$Extracted_Terraclimate_mat_2000_2020
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- MAT_df$Terraclimate_mat_2000_2020_Clipped
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 40, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 40, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units\n")
+```
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 40, length.out = 512)
+
+# Kernel density estimates
+pop_density <- density(MAT_df$Terraclimate_mat_2000_2020_Clipped, from = 0, to = 40, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 40, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units of phosphorus\n")
+```
+
+
+
+
+
+
+
+
+
+
+
+## Precipitation - no Sahara
+```{r}
+PPT <- raster(here(rast_loc,'PPT_No Sahara.tif'))
+
+# plot raster data
+plot(PPT,
+     main = "PPT")
+```
+
+```{r}
+PPT <- brick(here(rast_loc,'PPT_No Sahara.tif'))
+```
+
+```{r}
+PPT_df <- as.data.frame(rasterToPoints(PPT,spatial = TRUE))
+head(PPT_df)
+hist(PPT_df$PPT_No.Sahara)
+```
+
+
+```{r}
+# --- 1. Calculate modes (peak positions) for each group ---
+# Remove NAs if needed
+mode_tropics <- density(na.omit(PPT_df$PPT_No.Sahara))$x[which.max(density(na.omit(PPT_df$PPT_No.Sahara))$y)]
+mode_bnf     <- density(na.omit(bnf$ppt_Terraclimate_2000_2020_EX))$x[which.max(density(na.omit(bnf$ppt_Terraclimate_2000_2020_EX))$y)]
+mode_denit   <- density(na.omit(denit$Extracted_Terraclimate_ppt_2000_2020))$x[which.max(density(na.omit(denit$Extracted_Terraclimate_ppt_2000_2020))$y)]
+
+# --- 2. Set axis limits and color palette ---
+x_axis_extent <- c(0, 5500)
+
+color_palette <- c(
+  "Precipitation - Tropics" = "grey",
+  "Precipitation - Fixation points" = "red",
+  "Precipitation - Denitrification points" = "blue"
+)
+
+# --- 3. Create the plot with density curves and vertical dashed lines ---
+p <- ggplot() +
+  geom_density(data = PPT_df, aes(x = PPT_No.Sahara, fill = "Precipitation - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf, aes(x = ppt_Terraclimate_2000_2020_EX, fill = "Precipitation - Fixation points"), alpha = 0.5) +
+  geom_density(data = denit, aes(x = Extracted_Terraclimate_ppt_2000_2020, fill = "Precipitation - Denitrification points"), alpha = 0.5) +
+  
+  # Add vertical dashed lines at density peaks (modes)
+  geom_vline(xintercept = mode_tropics, linetype = "dashed", color = color_palette["Precipitation - Tropics"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_bnf,     linetype = "dashed", color = color_palette["Precipitation - Fixation points"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_denit,   linetype = "dashed", color = color_palette["Precipitation - Denitrification points"], linewidth = 0.75) +
+
+  # Labels, theme, and scale adjustments
+  labs(title = " ", x = "Precipitation (mm)", y = " ") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +
+  theme(
+    legend.position = c(0.83, 0.86),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14)
+  )
+
+# Show plot
+p
+#ggsave(here(figure_loc, "Precipitation_NoSahara_Density.png"), plot = p, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+cat("Mode of Precipitation - Tropics: ", round(mode_tropics, 2), "mm\n")
+cat("Mode of Precipitation - Fixation points: ", round(mode_bnf, 2), "mm\n")
+cat("Mode of Precipitation - Denitrification points: ", round(mode_denit, 2), "mm\n")
+```
+
+
+
+##Density curve offset 
+BNF - Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- bnf$ppt_Terraclimate_2000_2020_EX
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- PPT_df$PPT_No.Sahara
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 5500, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 5500, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units \n")
+```
+
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 5500, length.out = 512)
+
+
+# Kernel density estimates
+pop_density <- density(PPT_df$PPT_No.Sahara, from = 0, to = 5500, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 5500, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units\n")
+```
+
+Negative offset means the second whole curve is offset to the left, positive is to the right 
+
+
+
+
+Denit: Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- denit$Extracted_Terraclimate_ppt_2000_2020
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- PPT_df$PPT_No.Sahara
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 5500, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 5500, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units\n")
+```
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 5500, length.out = 512)
+
+# Kernel density estimates
+pop_density <- density(PPT_df$PPT_No.Sahara, from = 0, to = 5500, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 5500, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units of phosphorus\n")
+```
+
+##Precip - thresholding 
+
+```{r}
+bnf %>%
+  summarise(
+    count_above_cutoff = sum(ppt_Terraclimate_2000_2020_EX < 1500, na.rm = TRUE),
+    total_count = n(),
+    proportion_above_cutoff = count_above_cutoff / total_count
+  )
+```
+
+
+```{r}
+denit %>%
+  summarise(
+    count_above_cutoff = sum(Extracted_Terraclimate_ppt_2000_2020 < 1500, na.rm = TRUE),
+    total_count = n(),
+    proportion_above_cutoff = count_above_cutoff / total_count
+  )
+```
+
+
+Area above raster cutoff: 
+```{r}
+PPT <- rast(here(rast_loc,'PPT_No Sahara.tif'))
+# Create a binary raster where cells > 10 are TRUE (1), others are FALSE (0)
+above_cutoff <- PPT < 1500
+
+# Convert TRUE/FALSE to numeric
+above_cutoff <- classify(above_cutoff, cbind(NA, NA, NA), include.lowest = TRUE)  # keep NAs as NA
+above_cutoff <- as.numeric(above_cutoff)
+
+# Calculate cell area (in km² or m², depending on CRS)
+cell_areas <- cellSize(PPT, unit = "m")  # or unit = "m" for m²
+
+# Multiply by mask
+above_area_raster <- cell_areas * above_cutoff
+
+# Sum area above cutoff
+area_above_cutoff <- global(above_area_raster, sum, na.rm = TRUE)[1,1]
+```
+
+Total area: 
+```{r}
+# Only count area where data exists
+total_area <- global(cell_areas * !is.na(PPT), sum, na.rm = TRUE)[1,1]
+```
+
+Proportion of area above cuttoff:
+```{r}
+proportion_above_cutoff <- area_above_cutoff / total_area
+proportion_above_cutoff
+```
+
+
+
+
+
+
+
+##AET
+
+```{r}
+AET <- raster(here(rast_loc,'AET_NoSahara.tif'))
+
+# plot raster data
+plot(AET,
+     main = "AET")
+```
+
+Convert raster values to data frame
+```{r}
+AET <- brick(here(rast_loc,'AET_NoSahara.tif'))
+```
+
+```{r}
+AET_df <- as.data.frame(rasterToPoints(AET,spatial = TRUE))
+head(AET_df)
+hist(AET_df$AET_NoSahara)
+```
+
+
+```{r}
+# --- 1. Calculate modes (peak positions) for each group ---
+# Remove NAs if needed
+mode_tropics <- density(na.omit(AET_df$AET_NoSahara))$x[which.max(density(na.omit(AET_df$AET_NoSahara))$y)]
+mode_bnf     <- density(na.omit(bnf$aet_Terraclimate_2000_2020_EX))$x[which.max(density(na.omit(bnf$aet_Terraclimate_2000_2020_EX))$y)]
+mode_denit   <- density(na.omit(denit$Extracted_Terraclimate_aet_2000_2020))$x[which.max(density(na.omit(denit$Extracted_Terraclimate_aet_2000_2020))$y)]
+
+# --- 2. Set axis limits and color palette ---
+x_axis_extent <- c(0, 1500)
+
+color_palette <- c(
+  "AET - Tropics" = "grey",
+  "AET - Fixation points" = "red",
+  "AET - Denitrification points" = "blue"
+)
+
+# --- 3. Create the plot with density curves and vertical dashed lines ---
+p <- ggplot() +
+  geom_density(data = AET_df, aes(x = AET_NoSahara, fill = "AET - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf, aes(x = aet_Terraclimate_2000_2020_EX, fill = "AET - Fixation points"), alpha = 0.5) +
+  geom_density(data = denit, aes(x = Extracted_Terraclimate_aet_2000_2020, fill = "AET - Denitrification points"), alpha = 0.5) +
+  
+  # Add vertical dashed lines at density peaks (modes)
+  geom_vline(xintercept = mode_tropics, linetype = "dashed", color = color_palette["AET - Tropics"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_bnf,     linetype = "dashed", color = color_palette["AET - Fixation points"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_denit,   linetype = "dashed", color = color_palette["AET - Denitrification points"], linewidth = 0.75) +
+
+  # Labels, theme, and scale adjustments
+  labs(title = " ", x = "AET (mm)", y = " ") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +
+  theme(
+    legend.position = c(0.23, 0.86),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14)
+  )
+
+# Show plot
+p
+ggsave(here(figure_loc, "AET_noSahara_Density.png"), plot = p, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+cat("Mode of AET - Tropics: ", round(mode_tropics, 2), "mm\n")
+cat("Mode of AET - Fixation points: ", round(mode_bnf, 2), "mm\n")
+cat("Mode of AET - Denitrification points: ", round(mode_denit, 2), "mm\n")
+```
+
+
+
+##Density curve offset 
+BNF - Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- bnf$aet_Terraclimate_2000_2020_EX
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- AET_df$AET_NoSahara
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 1500, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 1500, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units \n")
+```
+
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 1500, length.out = 512)
+
+
+# Kernel density estimates
+pop_density <- density(AET_df$AET_NoSahara, from = 0, to = 1500, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 1500, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units\n")
+```
+
+Negative offset means the second whole curve is offset to the left, positive is to the right 
+
+
+
+
+Denit: Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- denit$Extracted_Terraclimate_aet_2000_2020
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- AET_df$AET_NoSahara
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 1500, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 1500, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units\n")
+```
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 1500, length.out = 512)
+
+# Kernel density estimates
+pop_density <- density(AET_df$AET_NoSahara, from = 0, to = 1500, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 1500, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units of phosphorus\n")
+```
+
+
+
+
+
+
+##Precipitation seasonality 
+
+```{r}
+seas <- raster(here(rast_loc,'Seasonality_NoSahara.tif'))
+
+# plot raster data
+plot(seas,
+     main = "seas")
+```
+
+Convert raster values to data frame
+```{r}
+seas <- brick(here(rast_loc,'Seasonality_NoSahara.tif'))
+```
+
+```{r}
+seas_df <- as.data.frame(rasterToPoints(seas,spatial = TRUE))
+head(seas_df)
+hist(seas_df$Seasonality_NoSahara)
+```
+
+
+```{r}
+# --- 1. Calculate modes (peak positions) for each group ---
+# Remove NAs if needed
+mode_tropics <- density(na.omit(seas_df$Seasonality_NoSahara))$x[which.max(density(na.omit(seas_df$Seasonality_NoSahara))$y)]
+mode_bnf     <- density(na.omit(bnf$Seasonality))$x[which.max(density(na.omit(bnf$Seasonality))$y)]
+mode_denit   <- density(na.omit(denit$Extracted_Seasonality))$x[which.max(density(na.omit(denit$Extracted_Seasonality))$y)]
+
+# --- 2. Set axis limits and color palette ---
+x_axis_extent <- c(0, 200)
+
+color_palette <- c(
+  "Seasonality - Tropics" = "grey",
+  "Seasonality - Fixation points" = "red",
+  "Seasonality - Denitrification points" = "blue"
+)
+
+# --- 3. Create the plot with density curves and vertical dashed lines ---
+p <- ggplot() +
+  geom_density(data = seas_df, aes(x = Seasonality_NoSahara, fill = "Seasonality - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf, aes(x = Seasonality, fill = "Seasonality - Fixation points"), alpha = 0.5) +
+  geom_density(data = denit, aes(x = Extracted_Seasonality, fill = "Seasonality - Denitrification points"), alpha = 0.5) +
+  
+  # Add vertical dashed lines at density peaks (modes)
+  geom_vline(xintercept = mode_tropics, linetype = "dashed", color = color_palette["Seasonality - Tropics"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_bnf,     linetype = "dashed", color = color_palette["Seasonality - Fixation points"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_denit,   linetype = "dashed", color = color_palette["Seasonality - Denitrification points"], linewidth = 0.75) +
+
+  # Labels, theme, and scale adjustments
+  labs(title = " ", x = "Precipitation Seasonality (CV)", y = " ") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +
+  theme(
+    legend.position = c(0.83, 0.86),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14)
+  )
+
+# Show plot
+p
+ggsave(here(figure_loc, "Seasonality_noSahara_Density.png"), plot = p, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+cat("Mode of Seasonality - Tropics: ", round(mode_tropics, 2), "CV\n")
+cat("Mode of Seasonality - Fixation points: ", round(mode_bnf, 2), "CV\n")
+cat("Mode of Seasonality - Denitrification points: ", round(mode_denit, 2), "CV\n")
+```
+
+
+
+##Density curve offset 
+BNF - Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- bnf$Seasonality
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- seas_df$Seasonality_NoSahara
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 1500, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 1500, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units \n")
+```
+
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 200, length.out = 512)
+
+
+# Kernel density estimates
+pop_density <- density(seas_df$Seasonality_NoSahara, from = 0, to = 200, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 200, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units\n")
+```
+
+Negative offset means the second whole curve is offset to the left, positive is to the right 
+
+
+
+
+Denit: Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- denit$Extracted_Seasonality
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- seas_df$Seasonality_NoSahara
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 1500, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 1500, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units\n")
+```
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 200, length.out = 512)
+
+# Kernel density estimates
+pop_density <- density(seas_df$Seasonality_NoSahara, from = 0, to = 200, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 200, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units of phosphorus\n")
+```
+
+
+
+##Seasonality - thresholding 
+
+```{r}
+bnf %>%
+  summarise(
+    count_above_cutoff = sum(Seasonality > 80, na.rm = TRUE),
+    total_count = n(),
+    proportion_above_cutoff = count_above_cutoff / total_count
+  )
+```
+
+
+```{r}
+denit %>%
+  summarise(
+    count_above_cutoff = sum(Extracted_Seasonality > 80, na.rm = TRUE),
+    total_count = n(),
+    proportion_above_cutoff = count_above_cutoff / total_count
+  )
+```
+
+
+Area above raster cutoff: 
+```{r}
+seas <- rast(here(rast_loc,'Seasonality_NoSahara.tif'))
+# Create a binary raster where cells > 10 are TRUE (1), others are FALSE (0)
+above_cutoff <- seas > 80
+
+# Convert TRUE/FALSE to numeric
+above_cutoff <- classify(above_cutoff, cbind(NA, NA, NA), include.lowest = TRUE)  # keep NAs as NA
+above_cutoff <- as.numeric(above_cutoff)
+
+# Calculate cell area (in km² or m², depending on CRS)
+cell_areas <- cellSize(seas, unit = "m")  # or unit = "m" for m²
+
+# Multiply by mask
+above_area_raster <- cell_areas * above_cutoff
+
+# Sum area above cutoff
+area_above_cutoff <- global(above_area_raster, sum, na.rm = TRUE)[1,1]
+```
+
+Total area: 
+```{r}
+# Only count area where data exists
+total_area <- global(cell_areas * !is.na(seas), sum, na.rm = TRUE)[1,1]
+```
+
+Proportion of area above cuttoff:
+```{r}
+proportion_above_cutoff <- area_above_cutoff / total_area
+proportion_above_cutoff
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##Soil Carbon
+
+```{r}
+SC <- raster(here(rast_loc,'SOC_NoSahara.tif'))
+
+# plot raster data
+plot(SC,
+     main = "SC")
+```
+
+Convert raster values to data frame
+```{r}
+SC <- brick(here(rast_loc,'SOC_NoSahara.tif'))
+```
+
+```{r}
+SC_df <- as.data.frame(rasterToPoints(SC,spatial = TRUE))
+head(SC_df)
+hist(SC_df$SOC_NoSahara)
+```
+
+
+```{r}
+# --- 1. Calculate modes (peak positions) for each group ---
+# Remove NAs if needed
+mode_tropics <- density(na.omit(SC_df$SOC_NoSahara))$x[which.max(density(na.omit(SC_df$SOC_NoSahara))$y)]
+mode_bnf     <- density(na.omit(bnf$organiccarbon_SoilGrids_EX))$x[which.max(density(na.omit(bnf$organiccarbon_SoilGrids_EX))$y)]
+mode_denit   <- density(na.omit(denit$Extracted_SoilGrids_organiccarbon))$x[which.max(density(na.omit(denit$Extracted_SoilGrids_organiccarbon))$y)]
+
+# --- 2. Set axis limits and color palette ---
+x_axis_extent <- c(0, 1500)
+
+color_palette <- c(
+  "Soil Carbon - Tropics" = "grey",
+  "Soil Carbon - Fixation points" = "red",
+  "Soil Carbon - Denitrification points" = "blue"
+)
+
+# --- 3. Create the plot with density curves and vertical dashed lines ---
+p <- ggplot() +
+  geom_density(data = SC_df, aes(x = SOC_NoSahara, fill = "Soil Carbon - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf, aes(x = organiccarbon_SoilGrids_EX, fill = "Soil Carbon - Fixation points"), alpha = 0.5) +
+  geom_density(data = denit, aes(x = Extracted_SoilGrids_organiccarbon, fill = "Soil Carbon - Denitrification points"), alpha = 0.5) +
+  
+  # Add vertical dashed lines at density peaks (modes)
+  geom_vline(xintercept = mode_tropics, linetype = "dashed", color = color_palette["Soil Carbon - Tropics"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_bnf,     linetype = "dashed", color = color_palette["Soil Carbon - Fixation points"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_denit,   linetype = "dashed", color = color_palette["Soil Carbon - Denitrification points"], linewidth = 0.75) +
+
+  # Labels, theme, and scale adjustments
+  labs(title = " ", x = "Soil Organic Carbon (g/kg)", y = " ") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +
+  theme(
+    legend.position = c(0.83, 0.86),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14)
+  )
+
+# Show plot
+p
+ggsave(here(figure_loc, "SOC_noSahara_Density.png"), plot = p, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+cat("Mode of Soil Carbon - Tropics: ", round(mode_tropics, 2), "g/kg\n")
+cat("Mode of Soil Carbon - Fixation points: ", round(mode_bnf, 2), "g/kg\n")
+cat("Mode of Soil Carbon - Denitrification points: ", round(mode_denit, 2), "g/kg\n")
+```
+
+
+
+##Density curve offset 
+BNF - Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- bnf$organiccarbon_SoilGrids_EX
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- SC_df$SOC_NoSahara
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 1500, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 1500, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units \n")
+```
+
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 1500, length.out = 512)
+
+
+# Kernel density estimates
+pop_density <- density(SC_df$SOC_NoSahara, from = 0, to = 1500, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 1500, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units\n")
+```
+
+Negative offset means the second whole curve is offset to the left, positive is to the right 
+
+
+
+
+Denit: Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- denit$Extracted_SoilGrids_organiccarbon
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- SC_df$SOC_NoSahara
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 1500, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 1500, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units\n")
+```
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 1500, length.out = 512)
+
+# Kernel density estimates
+pop_density <- density(SC_df$SOC_NoSahara, from = 0, to = 1500, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 1500, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units\n")
+```
+
+
+
+##SOC - thresholding 
+
+```{r}
+bnf %>%
+  summarise(
+    count_above_cutoff = sum(organiccarbon_SoilGrids_EX < 350, na.rm = TRUE),
+    total_count = n(),
+    proportion_above_cutoff = count_above_cutoff / total_count
+  )
+```
+
+
+```{r}
+denit %>%
+  summarise(
+    count_above_cutoff = sum(Extracted_SoilGrids_organiccarbon < 350, na.rm = TRUE),
+    total_count = n(),
+    proportion_above_cutoff = count_above_cutoff / total_count
+  )
+```
+
+
+Area above raster cutoff: 
+```{r}
+SC <- rast(here(rast_loc,'SOC_NoSahara.tif'))
+# Create a binary raster where cells > 10 are TRUE (1), others are FALSE (0)
+above_cutoff <- SC < 350
+
+# Convert TRUE/FALSE to numeric
+above_cutoff <- classify(above_cutoff, cbind(NA, NA, NA), include.lowest = TRUE)  # keep NAs as NA
+above_cutoff <- as.numeric(above_cutoff)
+
+# Calculate cell area (in km² or m², depending on CRS)
+cell_areas <- cellSize(SC, unit = "m")  # or unit = "m" for m²
+
+# Multiply by mask
+above_area_raster <- cell_areas * above_cutoff
+
+# Sum area above cutoff
+area_above_cutoff <- global(above_area_raster, sum, na.rm = TRUE)[1,1]
+```
+
+Total area: 
+```{r}
+# Only count area where data exists
+total_area <- global(cell_areas * !is.na(SC), sum, na.rm = TRUE)[1,1]
+```
+
+Proportion of area above cuttoff:
+```{r}
+proportion_above_cutoff <- area_above_cutoff / total_area
+proportion_above_cutoff
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##Soil N 
+
+```{r}
+SoilN <- raster(here(rast_loc,'SoilN_NoSahara.tif'))
+
+# plot raster data
+plot(SoilN,
+     main = "Soil N")
+```
+
+Convert raster values to data frame
+```{r}
+SoilN <- brick(here(rast_loc,'SoilN_NoSahara.tif'))
+```
+
+```{r}
+SoilN_df <- as.data.frame(rasterToPoints(SoilN,spatial = TRUE))
+head(SoilN_df)
+hist(SoilN_df$SoilN_NoSahara)
+```
+
+
+```{r}
+# --- 1. Calculate modes (peak positions) for each group ---
+# Remove NAs if needed
+mode_tropics <- density(na.omit(SoilN_df$SoilN_NoSahara))$x[which.max(density(na.omit(SoilN_df$SoilN_NoSahara))$y)]
+mode_bnf     <- density(na.omit(bnf$nitrogen_SoilGrids_EX))$x[which.max(density(na.omit(bnf$nitrogen_SoilGrids_EX))$y)]
+mode_denit   <- density(na.omit(denit$Extracted_SoilGrids_nitrogen))$x[which.max(density(na.omit(denit$Extracted_SoilGrids_nitrogen))$y)]
+
+# --- 2. Set axis limits and color palette ---
+x_axis_extent <- c(0, 1400)
+
+color_palette <- c(
+  "Soil N - Tropics" = "grey",
+  "Soil N - Fixation points" = "red",
+  "Soil N - Denitrification points" = "blue"
+)
+
+# --- 3. Create the plot with density curves and vertical dashed lines ---
+p <- ggplot() +
+  geom_density(data = SoilN_df, aes(x = SoilN_NoSahara, fill = "Soil N - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf, aes(x = nitrogen_SoilGrids_EX, fill = "Soil N - Fixation points"), alpha = 0.5) +
+  geom_density(data = denit, aes(x = Extracted_SoilGrids_nitrogen, fill = "Soil N - Denitrification points"), alpha = 0.5) +
+  
+  # Add vertical dashed lines at density peaks (modes)
+  geom_vline(xintercept = mode_tropics, linetype = "dashed", color = color_palette["Soil N - Tropics"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_bnf,     linetype = "dashed", color = color_palette["Soil N - Fixation points"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_denit,   linetype = "dashed", color = color_palette["Soil N - Denitrification points"], linewidth = 0.75) +
+
+  # Labels, theme, and scale adjustments
+  labs(title = " ", x = "Soil N (mg/kg)", y = " ") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +
+  theme(
+    legend.position = c(0.83, 0.86),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14)
+  )
+
+# Show plot
+p
+ggsave(here(figure_loc, "SoilN_Density.png"), plot = p, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+cat("Mode of Soil N - Tropics: ", round(mode_tropics, 2), "mg/kg\n")
+cat("Mode of Soil N - Fixation points: ", round(mode_bnf, 2), "mg/kg\n")
+cat("Mode of Soil N - Denitrification points: ", round(mode_denit, 2), "mg/kg\n")
+```
+
+
+
+##Density curve offset 
+BNF - Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- bnf$nitrogen_SoilGrids_EX
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- SoilN_df$SoilN_NoSahara
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 1200, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 1200, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units \n")
+```
+
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 1400, length.out = 512)
+
+
+# Kernel density estimates
+pop_density <- density(SoilN_df$SoilN_NoSahara, from = 0, to = 1200, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 1200, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units\n")
+```
+
+Negative offset means the second whole curve is offset to the left, positive is to the right 
+
+
+
+
+Denit: Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- denit$Extracted_SoilGrids_nitrogen
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- SoilN_df$SoilN_NoSahara
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 1200, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 1200, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units\n")
+```
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 1200, length.out = 512)
+
+# Kernel density estimates
+pop_density <- density(SoilN_df$SoilN_NoSahara, from = 0, to = 1200, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 1200, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units of N\n")
+```
+
+
+
+##Soil N - thresholding 
+
+```{r}
+bnf %>%
+  summarise(
+    count_above_cutoff = sum(nitrogen_SoilGrids_EX > 300, na.rm = TRUE),
+    total_count = n(),
+    proportion_above_cutoff = count_above_cutoff / total_count
+  )
+```
+
+
+```{r}
+denit %>%
+  summarise(
+    count_above_cutoff = sum(Extracted_SoilGrids_nitrogen > 300, na.rm = TRUE),
+    total_count = n(),
+    proportion_above_cutoff = count_above_cutoff / total_count
+  )
+```
+
+
+Area above raster cutoff: 
+```{r}
+SoilN <- rast(here(rast_loc,'SoilN_NoSahara.tif'))
+# Create a binary raster where cells > 10 are TRUE (1), others are FALSE (0)
+above_cutoff <- SoilN > 300
+
+# Convert TRUE/FALSE to numeric
+above_cutoff <- classify(above_cutoff, cbind(NA, NA, NA), include.lowest = TRUE)  # keep NAs as NA
+above_cutoff <- as.numeric(above_cutoff)
+
+# Calculate cell area (in km² or m², depending on CRS)
+cell_areas <- cellSize(SoilN, unit = "m")  # or unit = "m" for m²
+
+# Multiply by mask
+above_area_raster <- cell_areas * above_cutoff
+
+# Sum area above cutoff
+area_above_cutoff <- global(above_area_raster, sum, na.rm = TRUE)[1,1]
+```
+
+Total area: 
+```{r}
+# Only count area where data exists
+total_area <- global(cell_areas * !is.na(SoilN), sum, na.rm = TRUE)[1,1]
+```
+
+Proportion of area above cuttoff:
+```{r}
+proportion_above_cutoff <- area_above_cutoff / total_area
+proportion_above_cutoff
+```
+
+
+
+##Soil Phosphorous 
+
+```{r}
+SoilP <- raster(here(rast_loc,'SoilP_NoSahara.tif'))
+
+# plot raster data
+plot(SoilP,
+     main = "Soil P")
+```
+
+
+Convert raster values to data frame
+```{r}
+SoilP <- brick(here(rast_loc,'SoilP_NoSahara.tif'))
+```
+
+```{r}
+SoilP_df <- as.data.frame(rasterToPoints(SoilP,spatial = TRUE))
+head(SoilP_df)
+hist(SoilP_df$SoilP_NoSahara)
+```
+
+
+Density curves with lines indicating the peak (mode) of each population
+```{r}
+# --- 1. Calculate modes (peak positions) for each group ---
+# Remove NAs if needed
+mode_tropics <- density(na.omit(SoilP_df$SoilP_NoSahara))$x[which.max(density(na.omit(SoilP_df$SoilP_NoSahara))$y)]
+mode_bnf     <- density(na.omit(bnf$soil_total_phosphorus_EX))$x[which.max(density(na.omit(bnf$soil_total_phosphorus_EX))$y)]
+mode_denit   <- density(na.omit(denit$Extracted_soil_total_phosphorus))$x[which.max(density(na.omit(denit$Extracted_soil_total_phosphorus))$y)]
+
+# --- 2. Set axis limits and color palette ---
+x_axis_extent <- c(0, 1400)
+
+color_palette <- c(
+  "Soil P - Tropics" = "grey",
+  "Soil P - Fixation points" = "red",
+  "Soil P - Denitrification points" = "blue"
+)
+
+# --- 3. Create the plot with density curves and vertical dashed lines ---
+p <- ggplot() +
+  geom_density(data = SoilP_df, aes(x = SoilP_NoSahara, fill = "Soil P - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf, aes(x = soil_total_phosphorus_EX, fill = "Soil P - Fixation points"), alpha = 0.5) +
+  geom_density(data = denit, aes(x = Extracted_soil_total_phosphorus, fill = "Soil P - Denitrification points"), alpha = 0.5) +
+  
+  # Add vertical dashed lines at density peaks (modes)
+  geom_vline(xintercept = mode_tropics, linetype = "dashed", color = color_palette["Soil P - Tropics"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_bnf,     linetype = "dashed", color = color_palette["Soil P - Fixation points"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_denit,   linetype = "dashed", color = color_palette["Soil P - Denitrification points"], linewidth = 0.75) +
+
+  # Labels, theme, and scale adjustments
+  labs(title = " ", x = "Soil P (mg/kg)", y = " ") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +
+  theme(
+    legend.position = c(0.83, 0.86),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14)
+  )
+
+# Show plot
+p
+ggsave(here(figure_loc, "SoilP_NoSahara_Density.png"), plot = p, width = 8, height = 6, dpi = 300)
+```
+
+##Density curve offset 
+BNF - Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- bnf$soil_total_phosphorus_EX
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- SoilP$soil_total_phosphorus_Clipped
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 1400, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 1400, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units of phosphorus\n")
+```
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 1400, length.out = 512)
+
+
+
+# Kernel density estimates
+pop_density <- density(SoilP$soil_total_phosphorus_Clipped, from = 0, to = 1400, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 1400, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units of phosphorus\n")
+```
+
+```{r}
+# Spacing between x-values in your density grid
+dx <- diff(x_grid[1:2])  # This gives the size of one step in phosphorus units
+
+# Index of max correlation
+best_lag_index <- which.max(ccf_result$acf)
+best_lag <- ccf_result$lag[best_lag_index]
+
+# Convert lag index to actual phosphorus offset
+offset_value <- best_lag * dx
+
+cat("Estimated shift (subset vs population):", offset_value, "mg/kg P")
+```
+
+Denit: Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- denit$Extracted_soil_total_phosphorus
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- SoilP$soil_total_phosphorus_Clipped
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 1400, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 1400, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units of phosphorus\n")
+```
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 1400, length.out = 512)
+
+# Kernel density estimates
+pop_density <- density(SoilP$soil_total_phosphorus_Clipped, from = 0, to = 1400, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 1400, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units of phosphorus\n")
+```
+
+```{r}
+# Spacing between x-values in your density grid
+dx <- diff(x_grid[1:2])  # This gives the size of one step in phosphorus units
+
+# Index of max correlation
+best_lag_index <- which.max(ccf_result$acf)
+best_lag <- ccf_result$lag[best_lag_index]
+
+# Convert lag index to actual phosphorus offset
+offset_value <- best_lag * dx
+
+cat("Estimated shift (subset vs population):", offset_value, "mg/kg P")
+```
+
+
+
+
+##Soil P - thresholding 
+
+```{r}
+bnf %>%
+  summarise(
+    count_above_cutoff = sum(soil_total_phosphorus_EX > 650, na.rm = TRUE),
+    total_count = n(),
+    proportion_above_cutoff = count_above_cutoff / total_count
+  )
+```
+
+
+```{r}
+denit %>%
+  summarise(
+    count_above_cutoff = sum(Extracted_soil_total_phosphorus > 650, na.rm = TRUE),
+    total_count = n(),
+    proportion_above_cutoff = count_above_cutoff / total_count
+  )
+```
+
+
+Area above raster cutoff: 
+```{r}
+SoilP <- rast(here(rast_loc,'SoilP_NoSahara.tif'))
+# Create a binary raster where cells > 10 are TRUE (1), others are FALSE (0)
+above_cutoff <- SoilP > 650
+
+# Convert TRUE/FALSE to numeric
+above_cutoff <- classify(above_cutoff, cbind(NA, NA, NA), include.lowest = TRUE)  # keep NAs as NA
+above_cutoff <- as.numeric(above_cutoff)
+
+# Calculate cell area (in km² or m², depending on CRS)
+cell_areas <- cellSize(SoilP, unit = "m")  # or unit = "m" for m²
+
+# Multiply by mask
+above_area_raster <- cell_areas * above_cutoff
+
+# Sum area above cutoff
+area_above_cutoff <- global(above_area_raster, sum, na.rm = TRUE)[1,1]
+```
+
+Total area: 
+```{r}
+# Only count area where data exists
+total_area <- global(cell_areas * !is.na(SoilP), sum, na.rm = TRUE)[1,1]
+```
+
+Proportion of area above cuttoff:
+```{r}
+proportion_above_cutoff <- area_above_cutoff / total_area
+proportion_above_cutoff
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##Soil P - EBF only OVERWRITES SOIL P BE CAREFUL
+
+
+```{r}
+SoilP <- raster(here(rast_loc,'SoilP_EBFOnly.tif'))
+
+# plot raster data
+plot(SoilP,
+     main = "Soil P")
+```
+
+Convert raster values to data frame
+```{r}
+SoilP <- brick(here(rast_loc,'SoilP_EBFOnly.tif'))
+```
+
+```{r}
+SoilP_df <- as.data.frame(rasterToPoints(SoilP,spatial = TRUE))
+head(SoilP_df)
+hist(SoilP_df$SoilP_EBFOnly)
+```
+
+
+```{r}
+# --- 1. Calculate modes (peak positions) for each group ---
+# Remove NAs if needed
+mode_tropics <- density(na.omit(SoilP_df$SoilP_EBFOnly))$x[which.max(density(na.omit(SoilP_df$SoilP_EBFOnly))$y)]
+mode_bnf     <- density(na.omit(bnf$soil_total_phosphorus_EX))$x[which.max(density(na.omit(bnf$soil_total_phosphorus_EX))$y)]
+mode_denit   <- density(na.omit(denit$Extracted_soil_total_phosphorus))$x[which.max(density(na.omit(denit$Extracted_soil_total_phosphorus))$y)]
+
+# --- 2. Set axis limits and color palette ---
+x_axis_extent <- c(0, 1200)
+
+color_palette <- c(
+  "Soil P - Tropics" = "grey",
+  "Soil P - Fixation points" = "red",
+  "Soil P - Denitrification points" = "blue"
+)
+
+# --- 3. Create the plot with density curves and vertical dashed lines ---
+p <- ggplot() +
+  geom_density(data = SoilP_df, aes(x = SoilP_EBFOnly, fill = "Soil P - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf, aes(x = soil_total_phosphorus_EX, fill = "Soil P - Fixation points"), alpha = 0.5) +
+  geom_density(data = denit, aes(x = Extracted_soil_total_phosphorus, fill = "Soil P - Denitrification points"), alpha = 0.5) +
+  
+  # Add vertical dashed lines at density peaks (modes)
+  geom_vline(xintercept = mode_tropics, linetype = "dashed", color = color_palette["Soil P - Tropics"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_bnf,     linetype = "dashed", color = color_palette["Soil P - Fixation points"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_denit,   linetype = "dashed", color = color_palette["Soil P - Denitrification points"], linewidth = 0.75) +
+
+  # Labels, theme, and scale adjustments
+  labs(title = " ", x = "Soil P (mg/kg)", y = " ") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +
+  theme(
+    legend.position = c(0.83, 0.86),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14)
+  )
+
+# Show plot
+p
+#ggsave(here(figure_loc, "SoilP_EBFOnly_Density.png"), plot = p, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+cat("Mode of Soil P - Tropics: ", round(mode_tropics, 2), "mg/kg\n")
+cat("Mode of Soil P - Fixation points: ", round(mode_bnf, 2), "mg/kg\n")
+cat("Mode of Soil P - Denitrification points: ", round(mode_denit, 2), "mg/kg\n")
+```
+
+
+
+##Density curve offset 
+BNF - Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- bnf$soil_total_phosphorus_EX
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- SoilP_df$SoilP_EBFOnly
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 1200, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 1200, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units \n")
+```
+
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 1200, length.out = 512)
+
+
+# Kernel density estimates
+pop_density <- density(SoilP_df$SoilP_EBFOnly, from = 0, to = 1200, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 1200, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units\n")
+```
+
+Negative offset means the second whole curve is offset to the left, positive is to the right 
+
+
+
+
+Denit: Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- denit$Extracted_soil_total_phosphorus
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- SoilP_df$SoilP_EBFOnly
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 1200, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 1200, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units\n")
+```
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 1200, length.out = 512)
+
+# Kernel density estimates
+pop_density <- density(SoilP_df$SoilP_EBFOnly, from = 0, to = 1200, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 1200, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units of phosphorus\n")
+```
+
+
+##Soil P EBF - thresholding 
+
+```{r}
+bnf %>%
+  summarise(
+    count_above_cutoff = sum(soil_total_phosphorus_EX > 625, na.rm = TRUE),
+    total_count = n(),
+    proportion_above_cutoff = count_above_cutoff / total_count
+  )
+```
+
+
+```{r}
+denit %>%
+  summarise(
+    count_above_cutoff = sum(Extracted_soil_total_phosphorus > 625, na.rm = TRUE),
+    total_count = n(),
+    proportion_above_cutoff = count_above_cutoff / total_count
+  )
+```
+
+
+Area above raster cutoff: 
+```{r}
+SoilP <- rast(here(rast_loc,'SoilP_EBFOnly.tif'))
+# Create a binary raster where cells > 10 are TRUE (1), others are FALSE (0)
+above_cutoff <- SoilP > 625
+
+# Convert TRUE/FALSE to numeric
+above_cutoff <- classify(above_cutoff, cbind(NA, NA, NA), include.lowest = TRUE)  # keep NAs as NA
+above_cutoff <- as.numeric(above_cutoff)
+
+# Calculate cell area (in km² or m², depending on CRS)
+cell_areas <- cellSize(SoilP, unit = "m")  # or unit = "m" for m²
+
+# Multiply by mask
+above_area_raster <- cell_areas * above_cutoff
+
+# Sum area above cutoff
+area_above_cutoff <- global(above_area_raster, sum, na.rm = TRUE)[1,1]
+```
+
+Total area: 
+```{r}
+# Only count area where data exists
+total_area <- global(cell_areas * !is.na(SoilP), sum, na.rm = TRUE)[1,1]
+```
+
+Proportion of area above cuttoff:
+```{r}
+proportion_above_cutoff <- area_above_cutoff / total_area
+proportion_above_cutoff
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##Elevation
+
+```{r}
+Elev <- raster(here(rast_loc,'Elevation_NoSahara.tif'))
+
+# plot raster data
+plot(Elev,
+     main = "Elevation")
+```
+
+Convert raster values to data frame
+```{r}
+Elev <- brick(here(rast_loc,'Elevation_NoSahara.tif'))
+```
+
+```{r}
+Elev_df <- as.data.frame(rasterToPoints(Elev,spatial = TRUE))
+head(Elev_df)
+hist(Elev_df$Elevation_NoSahara)
+```
+
+
+```{r}
+# --- 1. Calculate modes (peak positions) for each group ---
+# Remove NAs if needed
+mode_tropics <- density(na.omit(Elev_df$Elevation_NoSahara))$x[which.max(density(na.omit(Elev_df$Elevation_NoSahara))$y)]
+mode_bnf     <- density(na.omit(bnf$Elevation_EX))$x[which.max(density(na.omit(bnf$Elevation_EX))$y)]
+mode_denit   <- density(na.omit(denit$Elevation))$x[which.max(density(na.omit(denit$Elevation))$y)]
+
+# --- 2. Set axis limits and color palette ---
+x_axis_extent <- c(0, 2000)
+
+color_palette <- c(
+  "Elevation - Tropics" = "grey",
+  "Elevation - Fixation points" = "red",
+  "Elevation - Denitrification points" = "blue"
+)
+
+# --- 3. Create the plot with density curves and vertical dashed lines ---
+p <- ggplot() +
+  geom_density(data = Elev_df, aes(x = Elevation_NoSahara, fill = "Elevation - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf, aes(x = Elevation_EX, fill = "Elevation - Fixation points"), alpha = 0.5) +
+  geom_density(data = denit, aes(x = Elevation, fill = "Elevation - Denitrification points"), alpha = 0.5) +
+  
+  # Add vertical dashed lines at density peaks (modes)
+  geom_vline(xintercept = mode_tropics, linetype = "dashed", color = color_palette["Elevation - Tropics"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_bnf,     linetype = "dashed", color = color_palette["Elevation - Fixation points"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_denit,   linetype = "dashed", color = color_palette["Elevation - Denitrification points"], linewidth = 0.75) +
+
+  # Labels, theme, and scale adjustments
+  labs(title = " ", x = "Elevation (m A.S.L)", y = " ") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +
+  theme(
+    legend.position = c(0.83, 0.86),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14)
+  )
+
+# Show plot
+p
+ggsave(here(figure_loc, "Elevation_Low_Density.png"), plot = p, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+cat("Mode of Elevation - Tropics: ", round(mode_tropics, 2), "m\n")
+cat("Mode of Elevation - Fixation points: ", round(mode_bnf, 2), "m\n")
+cat("Mode of Elevation - Denitrification points: ", round(mode_denit, 2), "m\n")
+```
+
+
+
+##Density curve offset 
+BNF - Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- bnf$Elevation_EX
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- Elev_df$Elevation_NoSahara
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 2000, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 2000, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units \n")
+```
+
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 5000, length.out = 512)
+
+
+# Kernel density estimates
+pop_density <- density(Elev_df$Elevation_NoSahara, from = 0, to = 2000, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 2000, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units\n")
+```
+
+Negative offset means the second whole curve is offset to the left, positive is to the right 
+
+
+
+
+Denit: Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- denit$Elevation
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- Elev_df$Elevation_NoSahara
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 2000, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 2000, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units\n")
+```
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 2000, length.out = 512)
+
+# Kernel density estimates
+pop_density <- density(Elev_df$Elevation_NoSahara, from = 0, to = 2000, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 2000, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units of phosphorus\n")
+```
+
+
+
+
+
+
+
+
+
+##Slope 
+
+```{r}
+Slope <- raster(here(rast_loc,'Slope_NoSahara.tif'))
+
+# plot raster data
+plot(Slope,
+     main = "Slope")
+```
+
+Convert raster values to data frame
+```{r}
+Slope <- brick(here(rast_loc,'Slope_NoSahara.tif'))
+```
+
+```{r}
+Slope_df <- as.data.frame(rasterToPoints(Slope,spatial = TRUE))
+head(Slope_df)
+hist(Slope_df$Slope_NoSahara)
+```
+
+
+```{r}
+# --- 1. Calculate modes (peak positions) for each group ---
+# Remove NAs if needed
+mode_tropics <- density(na.omit(Slope_df$Slope_NoSahara))$x[which.max(density(na.omit(Slope_df$Slope_NoSahara))$y)]
+mode_bnf     <- density(na.omit(bnf$Slope_EX))$x[which.max(density(na.omit(bnf$Slope_EX))$y)]
+mode_denit   <- density(na.omit(denit$Slope))$x[which.max(density(na.omit(denit$Slope))$y)]
+
+# --- 2. Set axis limits and color palette ---
+x_axis_extent <- c(0, 90)
+
+color_palette <- c(
+  "Slope - Tropics" = "grey",
+  "Slope - Fixation points" = "red",
+  "Slope - Denitrification points" = "blue"
+)
+
+# --- 3. Create the plot with density curves and vertical dashed lines ---
+p <- ggplot() +
+  geom_density(data = Slope_df, aes(x = Slope_NoSahara, fill = "Slope - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf, aes(x = Slope_EX, fill = "Slope - Fixation points"), alpha = 0.5) +
+  geom_density(data = denit, aes(x = Slope, fill = "Slope - Denitrification points"), alpha = 0.5) +
+  
+  # Add vertical dashed lines at density peaks (modes)
+  geom_vline(xintercept = mode_tropics, linetype = "dashed", color = color_palette["Slope - Tropics"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_bnf,     linetype = "dashed", color = color_palette["Slope - Fixation points"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_denit,   linetype = "dashed", color = color_palette["Slope - Denitrification points"], linewidth = 0.75) +
+
+  # Labels, theme, and scale adjustments
+  labs(title = " ", x = "Slope (°)", y = " ") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +
+  theme(
+    legend.position = c(0.83, 0.86),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14)
+  )
+
+# Show plot
+p
+ggsave(here(figure_loc, "Slope_Density.png"), plot = p, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+cat("Mode of Slope - Tropics: ", round(mode_tropics, 2), "°\n")
+cat("Mode of Slope - Fixation points: ", round(mode_bnf, 2), "°\n")
+cat("Mode of Slope - Denitrification points: ", round(mode_denit, 2), "°\n")
+```
+
+
+
+##Density curve offset 
+BNF - Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- bnf$Slope_EX
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- Slope_df$Slope_NoSahara
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 90, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 90, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units \n")
+```
+
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 90, length.out = 512)
+
+
+# Kernel density estimates
+pop_density <- density(Slope_df$Slope_NoSahara, from = 0, to = 90, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 90, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units\n")
+```
+
+Negative offset means the second whole curve is offset to the left, positive is to the right 
+
+
+
+
+Denit: Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- denit$Slope
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- Slope_df$Slope_NoSahara
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 90, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 90, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units\n")
+```
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 90, length.out = 512)
+
+# Kernel density estimates
+pop_density <- density(Slope_df$Slope_NoSahara, from = 0, to = 90, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 90, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units\n")
+```
+
+
+
+
+##Slope - thresholding 
+
+```{r}
+bnf %>%
+  summarise(
+    count_above_cutoff = sum(Slope_EX > 15, na.rm = TRUE),
+    total_count = n(),
+    proportion_above_cutoff = count_above_cutoff / total_count
+  )
+```
+
+
+```{r}
+denit %>%
+  summarise(
+    count_above_cutoff = sum(Slope > 15, na.rm = TRUE),
+    total_count = n(),
+    proportion_above_cutoff = count_above_cutoff / total_count
+  )
+```
+
+
+Area above raster cutoff: 
+```{r}
+Slope <- rast(here(rast_loc,'Slope_NoSahara.tif'))
+# Create a binary raster where cells > 10 are TRUE (1), others are FALSE (0)
+above_cutoff <- Slope > 15
+
+# Convert TRUE/FALSE to numeric
+above_cutoff <- classify(above_cutoff, cbind(NA, NA, NA), include.lowest = TRUE)  # keep NAs as NA
+above_cutoff <- as.numeric(above_cutoff)
+
+# Calculate cell area (in km² or m², depending on CRS)
+cell_areas <- cellSize(Slope, unit = "m")  # or unit = "m" for m²
+
+# Multiply by mask
+above_area_raster <- cell_areas * above_cutoff
+
+# Sum area above cutoff
+area_above_cutoff <- global(above_area_raster, sum, na.rm = TRUE)[1,1]
+```
+
+Total area: 
+```{r}
+# Only count area where data exists
+total_area <- global(cell_areas * !is.na(Slope), sum, na.rm = TRUE)[1,1]
+```
+
+Proportion of area above cuttoff:
+```{r}
+proportion_above_cutoff <- area_above_cutoff / total_area
+proportion_above_cutoff
+```
+
+
+
+
+
+
+
+
+
+
+
+##Roughness
+
+```{r}
+Roughness <- raster(here(rast_loc,'Roughness_NoSahara.tif'))
+
+# plot raster data
+plot(Roughness,
+     main = "Roughness")
+```
+
+Convert raster values to data frame
+```{r}
+Roughness <- brick(here(rast_loc,'Roughness_NoSahara.tif'))
+```
+
+```{r}
+Roughness_df <- as.data.frame(rasterToPoints(Roughness,spatial = TRUE))
+head(Roughness_df)
+hist(Roughness_df$Roughness_NoSahara)
+```
+
+
+```{r}
+# --- 1. Calculate modes (peak positions) for each group ---
+# Remove NAs if needed
+mode_tropics <- density(na.omit(Roughness_df$Roughness_NoSahara))$x[which.max(density(na.omit(Roughness_df$Roughness_NoSahara))$y)]
+mode_bnf     <- density(na.omit(bnf$Roughness_EX))$x[which.max(density(na.omit(bnf$Roughness_EX))$y)]
+mode_denit   <- density(na.omit(denit$Roughness))$x[which.max(density(na.omit(denit$Roughness))$y)]
+
+# --- 2. Set axis limits and color palette ---
+x_axis_extent <- c(0, 200)
+
+color_palette <- c(
+  "Roughness - Tropics" = "grey",
+  "Roughness - Fixation points" = "red",
+  "Roughness - Denitrification points" = "blue"
+)
+
+# --- 3. Create the plot with density curves and vertical dashed lines ---
+p <- ggplot() +
+  geom_density(data = Roughness_df, aes(x = Roughness_NoSahara, fill = "Roughness - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf, aes(x = Roughness_EX, fill = "Roughness - Fixation points"), alpha = 0.5) +
+  geom_density(data = denit, aes(x = Roughness, fill = "Roughness - Denitrification points"), alpha = 0.5) +
+  
+  # Add vertical dashed lines at density peaks (modes)
+  geom_vline(xintercept = mode_tropics, linetype = "dashed", color = color_palette["Roughness - Tropics"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_bnf,     linetype = "dashed", color = color_palette["Roughness - Fixation points"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_denit,   linetype = "dashed", color = color_palette["Roughness - Denitrification points"], linewidth = 0.75) +
+
+  # Labels, theme, and scale adjustments
+  labs(title = " ", x = "Roughness (°/m)", y = " ") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +
+  theme(
+    legend.position = c(0.83, 0.86),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14)
+  )
+
+# Show plot
+p
+ggsave(here(figure_loc, "Roughness_Density.png"), plot = p, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+cat("Mode of Roughness - Tropics: ", round(mode_tropics, 2), "°\n")
+cat("Mode of Roughness - Fixation points: ", round(mode_bnf, 2), "°\n")
+cat("Mode of Roughness - Denitrification points: ", round(mode_denit, 2), "°\n")
+```
+
+
+
+##Density curve offset 
+BNF - Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- bnf$Roughness_EX
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- Roughness_df$Roughness_NoSahara
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 200, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 200, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units \n")
+```
+
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 200, length.out = 512)
+
+
+# Kernel density estimates
+pop_density <- density(Roughness_df$Roughness_NoSahara, from = 0, to = 200, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 200, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units\n")
+```
+
+Negative offset means the second whole curve is offset to the left, positive is to the right 
+
+
+
+
+Denit: Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- denit$Roughness
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- Roughness_df$Roughness_NoSahara
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 200, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 200, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units\n")
+```
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 200, length.out = 512)
+
+# Kernel density estimates
+pop_density <- density(Roughness_df$Roughness_NoSahara, from = 0, to = 200, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 200, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units\n")
+```
+
+
+
+
+
+
+##N deposition
+
+```{r}
+Ndep <- raster(here(rast_loc,'NDep_NoOcean2.tif'))
+
+# plot raster data
+plot(Ndep,
+     main = "N dep")
+```
+
+Convert raster values to data frame
+```{r}
+Ndep <- brick(here(rast_loc,'NDep_NoOcean2.tif'))
+```
+
+```{r}
+Ndep_df <- as.data.frame(rasterToPoints(Ndep,spatial = TRUE))
+head(Ndep_df)
+hist(Ndep_df$NDep_NoOcean2)
+```
+
+
+```{r}
+# --- 1. Calculate modes (peak positions) for each group ---
+# Remove NAs if needed
+mode_tropics <- density(na.omit(Ndep_df$NDep_NoOcean2))$x[which.max(density(na.omit(Ndep_df$NDep_NoOcean2))$y)]
+mode_bnf     <- density(na.omit(bnf$N_Dep_2050_250m))$x[which.max(density(na.omit(bnf$N_Dep_2050_250m))$y)]
+mode_denit   <- density(na.omit(denit$N_Dep1))$x[which.max(density(na.omit(denit$N_Dep1))$y)]
+
+# --- 2. Set axis limits and color palette ---
+x_axis_extent <- c(0, 5500)
+
+color_palette <- c(
+  "NDep - Tropics" = "grey",
+  "NDep - Fixation points" = "red",
+  "NDep - Denitrification points" = "blue"
+)
+
+# --- 3. Create the plot with density curves and vertical dashed lines ---
+p <- ggplot() +
+  geom_density(data = Ndep_df, aes(x = NDep_NoOcean2, fill = "NDep - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf, aes(x = N_Dep_2050_250m, fill = "NDep - Fixation points"), alpha = 0.5) +
+  geom_density(data = denit, aes(x = N_Dep1, fill = "NDep - Denitrification points"), alpha = 0.5) +
+  
+  # Add vertical dashed lines at density peaks (modes)
+  geom_vline(xintercept = mode_tropics, linetype = "dashed", color = color_palette["NDep - Tropics"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_bnf,     linetype = "dashed", color = color_palette["NDep - Fixation points"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_denit,   linetype = "dashed", color = color_palette["NDep - Denitrification points"], linewidth = 0.75) +
+
+  # Labels, theme, and scale adjustments
+  labs(title = " ", x = "N Deposition (mg N/m²/year)", y = " ") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +
+  theme(
+    legend.position = c(0.83, 0.86),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14)
+  )
+
+# Show plot
+p
+ggsave(here(figure_loc, "NDep_Density.png"), plot = p, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+cat("Mode of NDep - Tropics: ", round(mode_tropics, 2), "°\n")
+cat("Mode of NDep - Fixation points: ", round(mode_bnf, 2), "°\n")
+cat("Mode of NDep - Denitrification points: ", round(mode_denit, 2), "°\n")
+```
+
+
+
+##Density curve offset 
+BNF - Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- bnf$N_Dep_2050_250m
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- Ndep_df$NDep_NoOcean2
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 5500, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 5500, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units \n")
+```
+
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 5500, length.out = 512)
+
+
+# Kernel density estimates
+pop_density <- density(Ndep_df$NDep_NoOcean2, from = 0, to = 5500, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 5500, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units\n")
+```
+
+Negative offset means the second whole curve is offset to the left, positive is to the right 
+
+
+
+
+Denit: Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- denit$N_Dep1
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- Ndep_df$NDep_NoOcean2
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 5500, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 5500, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units\n")
+```
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 5500, length.out = 512)
+
+# Kernel density estimates
+pop_density <- density(Ndep_df$NDep_NoOcean2, from = 0, to = 5500, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 5500, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units\n")
+```
+
+
+
+
+
+
+
+
+
+
+
+##NPP
+```{r}
+NPP <- raster(here(rast_loc,'NPP_Reproject_10x.tif'))
+
+# plot raster data
+plot(NPP,
+     main = "NPP")
+```
+
+Convert raster values to data frame
+```{r}
+NPP <- brick(here(rast_loc,'NPP_Reproject_10x.tif'))
+```
+
+```{r}
+NPP_df <- as.data.frame(rasterToPoints(NPP,spatial = TRUE))
+head(NPP_df)
+hist(NPP_df$NPP_Reproject_10x)
+```
+
+
+```{r}
+# --- 1. Calculate modes (peak positions) for each group ---
+# Remove NAs if needed
+mode_tropics <- density(na.omit(NPP_df$NPP_Reproject_10x))$x[which.max(density(na.omit(NPP_df$NPP_Reproject_10x))$y)]
+mode_bnf     <- density(na.omit(bnf$NPP_MODIS_EX))$x[which.max(density(na.omit(bnf$NPP_MODIS_EX))$y)]
+mode_denit   <- density(na.omit(denit$Extracted_NPP_MODIS))$x[which.max(density(na.omit(denit$Extracted_NPP_MODIS))$y)]
+
+# --- 2. Set axis limits and color palette ---
+x_axis_extent <- c(0, 2.5)
+
+color_palette <- c(
+  "NPP - Tropics" = "grey",
+  "NPP - Fixation points" = "red",
+  "NPP - Denitrification points" = "blue"
+)
+
+# --- 3. Create the plot with density curves and vertical dashed lines ---
+p <- ggplot() +
+  geom_density(data = NPP_df, aes(x = NPP_Reproject_10x, fill = "NPP - Tropics"), alpha = 0.5) +
+  geom_density(data = bnf, aes(x = NPP_MODIS_EX, fill = "NPP - Fixation points"), alpha = 0.5) +
+  geom_density(data = denit, aes(x = Extracted_NPP_MODIS, fill = "NPP - Denitrification points"), alpha = 0.5) +
+  
+  # Add vertical dashed lines at density peaks (modes)
+  geom_vline(xintercept = mode_tropics, linetype = "dashed", color = color_palette["NPP - Tropics"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_bnf,     linetype = "dashed", color = color_palette["NPP - Fixation points"], linewidth = 0.75) +
+  geom_vline(xintercept = mode_denit,   linetype = "dashed", color = color_palette["NPP - Denitrification points"], linewidth = 0.75) +
+
+  # Labels, theme, and scale adjustments
+  labs(title = " ", x = "NPP (g C m−2 yr−1)", y = " ") +
+  theme_minimal() +
+  xlim(x_axis_extent) +
+  scale_fill_manual(values = color_palette, name = " ") +
+  theme(
+    legend.position = c(0.83, 0.89),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14)
+  )
+
+# Show plot
+p
+ggsave(here(figure_loc, "NPP_10x_Density.png"), plot = p, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+cat("Mode of NPP - Tropics: ", round(mode_tropics, 2), "g C m−2 yr−1\n")
+cat("Mode of NPP - Fixation points: ", round(mode_bnf, 2), "g C m−2 yr−1\n")
+cat("Mode of NPP - Denitrification points: ", round(mode_denit, 2), "g C m−2 yr−1\n")
+```
+
+
+
+
+##Density curve offset 
+BNF - Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- bnf$NPP_MODIS_EX
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- NPP_df$NPP_Reproject_10x
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 2.5, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 2.5, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units \n")
+```
+
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 2.5, length.out = 512)
+
+
+# Kernel density estimates
+pop_density <- density(NPP_df$NPP_Reproject_10x, from = 0, to = 2.5, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 2.5, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units\n")
+```
+
+Negative offset means the second whole curve is offset to the left, positive is to the right 
+
+
+
+
+Denit: Differences in curve modes -> peak vlaues and offset 
+```{r}
+sub_values <- denit$Extracted_NPP_MODIS
+sub_values_clean <- sub_values[!is.na(sub_values) & sub_values > 0]
+
+pop_values <- NPP_df$NPP_Reproject_10x
+pop_values_clean <- pop_values[!is.na(pop_values) & pop_values > 0]
+
+# Estimate densities
+pop_density <- density(pop_values_clean, from = 0, to = 2.5, n = 512)
+sub_density <- density(sub_values_clean, from = 0, to = 2.5, n = 512)
+
+# Find peak x-value (mode) for each curve
+pop_peak_x <- pop_density$x[which.max(pop_density$y)]
+sub_peak_x <- sub_density$x[which.max(sub_density$y)]
+
+# Compute offset directly from peaks
+peak_offset <- sub_peak_x - pop_peak_x
+
+# Report results
+cat("Peak (mode) of population density:", pop_peak_x, "\n")
+cat("Peak (mode) of subset density:", sub_peak_x, "\n")
+cat("Offset between peaks:", peak_offset, "units\n")
+```
+
+Cross correlation method, non-parametric, robust 
+```{r}
+# Estimate KDEs for both datasets over the same fixed grid
+x_grid <- seq(0, 2.5, length.out = 512)
+
+# Kernel density estimates
+pop_density <- density(NPP_df$NPP_Reproject_10x, from = 0, to = 2.5, n = length(x_grid))
+sub_density <- density(sub_values_clean, from = 0, to = 2.5, n = length(x_grid))
+
+# Perform cross-correlation on the y-values of the densities
+ccf_result <- ccf(pop_density$y, sub_density$y, plot = TRUE)
+
+# Calculate the offset in original units (phosphorus units)
+dx <- diff(x_grid[1:2])
+offset_index <- ccf_result$lag[which.max(ccf_result$acf)]
+offset_value <- offset_index * dx
+
+cat("Estimated offset (cross-correlation):", offset_value, "units\n")
+```
+
+
+
+
+##NPP - thresholding 
+
+```{r}
+bnf %>%
+  summarise(
+    count_above_cutoff = sum(NPP_MODIS_EX > 1.25, na.rm = TRUE),
+    total_count = n(),
+    proportion_above_cutoff = count_above_cutoff / total_count
+  )
+```
+
+
+```{r}
+denit %>%
+  summarise(
+    count_above_cutoff = sum(Extracted_NPP_MODIS > 1.25, na.rm = TRUE),
+    total_count = n(),
+    proportion_above_cutoff = count_above_cutoff / total_count
+  )
+```
+ 
+
+Area above raster cutoff: 
+```{r}
+NPP <- rast(here(rast_loc,'NPP_Reproject_10x.tif'))
+# Create a binary raster where cells > 10 are TRUE (1), others are FALSE (0)
+above_cutoff <- NPP > 1.25
+
+# Convert TRUE/FALSE to numeric
+above_cutoff <- classify(above_cutoff, cbind(NA, NA, NA), include.lowest = TRUE)  # keep NAs as NA
+above_cutoff <- as.numeric(above_cutoff)
+
+# Calculate cell area (in km² or m², depending on CRS)
+cell_areas <- cellSize(NPP, unit = "m")  # or unit = "m" for m²
+
+# Multiply by mask
+above_area_raster <- cell_areas * above_cutoff
+
+# Sum area above cutoff
+area_above_cutoff <- global(above_area_raster, sum, na.rm = TRUE)[1,1]
+```
+
+Total area: 
+```{r}
+# Only count area where data exists
+total_area <- global(cell_areas * !is.na(NPP), sum, na.rm = TRUE)[1,1]
+```
+
+Proportion of area above cuttoff:
+```{r}
+proportion_above_cutoff <- area_above_cutoff / total_area
+proportion_above_cutoff
+```
+
+
+
+
+
+

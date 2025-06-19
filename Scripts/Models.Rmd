@@ -35,11 +35,11 @@ data_loc <- here("Data")
 pca_loc <- here("Data", "PCA")
 outputs_loc <- here("Outputs")
 averages_loc <- here("Outputs", "AvgRasters")
+loc <- here("Data", "TRENDYN")
 ```
 
 ##BNF first 
 ```{r}
-loc <- here("Data", "TRENDYN")
 CP_BNF <- rast(here(loc, "CABLE-POP/fBNF_annually.nc"))
 CLASSIC_BNF <- rast(here(loc,"CLASSIC/fBNF_annually.nc"))
 CLM5_BNF <- rast(here(loc,"CLM5.0/fBNF_annually.nc"))
@@ -161,7 +161,7 @@ writeRaster(average_raster_units, output_file, format = "GTiff", overwrite = TRU
 
 
 
-
+##YOU CAN JUST START HERE!!!
 
 CP_BNF <- rast(here(loc, "CABLE-POP/fBNF_annually.nc"))
 CLASSIC_BNF <- rast(here(loc,"CLASSIC/fNloss_annually.nc"))
@@ -173,7 +173,6 @@ JULES_ES_BNF <- rast(here(loc,"JULES-ES/fNloss_annually.nc"))
 LPJ_GUESS_BNF <- rast(here(loc,"LPJ-GUESS/fNloss_annually.nc"))
 LPX_Bern_BNF <- rast(here(loc,"LPX-Bern/fNloss_annually.nc"))
 OCNv2_BNF <- rast(here(loc,"OCNv2/fNloss_annually.nc"))
-
 ORCHIDEEv3_BNF <- rast(here(loc,"ORCHIDEEv3/fNloss_annually.nc"))
 
 
@@ -205,7 +204,7 @@ raster_brick <- brick(rasters)
 average_raster <- calc(raster_brick, mean)
 
 
-
+##CONVERTS UNITS
 
 average_raster <- flip(average_raster, direction = 'y')
 average_raster <- terra::rotate(average_raster)

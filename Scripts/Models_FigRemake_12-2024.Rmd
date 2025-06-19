@@ -37,7 +37,7 @@ averages_loc <- here("Outputs", "AvgRasters")
 ```
 
 
-##PLotting density curves with TRENDY data
+##Plotting density curves with TRENDY data
 ```{r}
 bnf <- read.csv(here(data_loc,'BNF_TRENDYN.csv'), header= TRUE)
 bnf_no_NA <- bnf %>% drop_na(Variance)
@@ -302,7 +302,49 @@ p <- plot_ly(igbp_rough_sample, x = ~CustomLabels, type = NULL, marker = list(op
          barmode = "group",
          legend = list(x = 0.9, y = 0.9))
 p
+
+
+# Create annotations for percentage labels
+annotations <- list()
+for (i in 1:nrow(igbp_rough_sample)) {
+  # Find the max absolute value for correct positioning
+  max_val <- max(abs(igbp_rough_sample$SampleRate_BNF_sites[i]), abs(igbp_rough_sample$SampleRate_denit_sites[i]))
+  
+  # Dynamic offset (5% of max value)
+  y_offset <- max_val * 0.05  
+
+  # Determine which bar is taller (absolute value)
+  if (abs(igbp_rough_sample$SampleRate_BNF_sites[i]) >= abs(igbp_rough_sample$SampleRate_denit_sites[i])) {
+    y_pos <- igbp_rough_sample$SampleRate_BNF_sites[i] + ifelse(igbp_rough_sample$SampleRate_BNF_sites[i] > 0, y_offset, -y_offset)
+    y_anchor <- ifelse(igbp_rough_sample$SampleRate_BNF_sites[i] > 0, 'bottom', 'top')
+  } else {
+    y_pos <- igbp_rough_sample$SampleRate_denit_sites[i] + ifelse(igbp_rough_sample$SampleRate_denit_sites[i] > 0, y_offset, -y_offset)
+    y_anchor <- ifelse(igbp_rough_sample$SampleRate_denit_sites[i] > 0, 'bottom', 'top')
+  }
+  
+  # Add annotation for each bar
+  annotations <- c(annotations, list(
+    list(
+      x = igbp_rough_sample$CustomLabels[i],  # Correct x-axis mapping
+      y = y_pos,
+      text = paste0(igbp_rough_sample$Percent_rough_total[i], "%"),
+      showarrow = FALSE,
+      xanchor = 'center',
+      yanchor = y_anchor
+    )
+  ))
+}
+
+# Add annotations to the plot
+p <- layout(p, annotations = annotations)
+
+# Print the updated plot
+p
+
+
 ```
+
+
 
 
 

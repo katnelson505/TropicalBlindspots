@@ -40,7 +40,7 @@ csv <- read.csv(here("Data", "Data_Nov_2023",'TropicalDenitrificationData_V4_fix
 ```
 
 ```{r}
-write.csv(csv, here("Data", "file.csv"))
+#write.csv(csv, here("Data", "file.csv"))
 ```
 
 
